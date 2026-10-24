@@ -117,7 +117,8 @@ fn parse_authorization(value: &str) -> Option<ParsedAuth> {
 /// Middleware: every route except [`PUBLIC_PATHS`] needs a valid device
 /// signature over method, path and query, timestamp and body.
 pub async fn require_signature(State(s): State<AppState>, req: Request, next: Next) -> ApiResult<Response> {
-    if PUBLIC_PATHS.contains(&req.uri().path()) {
+    // Outside /v1 is the web app's static files.
+    if PUBLIC_PATHS.contains(&req.uri().path()) || !req.uri().path().starts_with("/v1/") {
         return Ok(next.run(req).await);
     }
     let unauthorized = |m: &str| ApiError::Unauthorized(m.to_string());

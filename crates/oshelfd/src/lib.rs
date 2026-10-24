@@ -7,6 +7,7 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod store;
+pub mod web;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -30,6 +31,8 @@ pub struct AppState {
     /// The Pi's identity, pinned by devices at pairing.
     pub server_key: Arc<ed25519_dalek::SigningKey>,
     pub replays: Arc<auth::ReplayCache>,
+    /// The web app served at `/`, if any.
+    pub web: Option<Arc<web::WebApp>>,
 }
 
 impl AppState {
@@ -46,6 +49,7 @@ impl AppState {
             events,
             server_key,
             replays: Arc::default(),
+            web: web::WebApp::default_app().map(Arc::new),
         })
     }
 }

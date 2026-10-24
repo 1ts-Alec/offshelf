@@ -276,7 +276,8 @@ Generation uses a fixed seed.
 | vault.json | Sealed vault header opened by passphrase and by recovery words; tampered header |
 | manifest.json | Five chained log entries (CBOR, sealed, entry hashes); skipped and replayed entries |
 
-All six are checked by `crates/oshelf-core/tests/vectors.rs`. vault.json has
+All six are checked by `crates/oshelf-core/tests/vectors.rs`, and against the
+WebAssembly build by `apps/web/test/vectors.test.mjs`. vault.json has
 random nonces, so it is checked by opening it rather than rebuilding it.
 
 cargo-fuzz runs nightly (`fuzz/`, `.github/workflows/fuzz.yml`) on chunk
