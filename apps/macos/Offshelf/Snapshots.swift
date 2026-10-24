@@ -28,7 +28,14 @@ enum Snapshots {
             for (name, view, size) in shots {
                 let host = NSHostingView(rootView: view.environmentObject(model).frame(width: size.width, height: size.height))
                 host.frame = NSRect(origin: .zero, size: size)
-                let w = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+                // Popover has no window chrome; the rest mirror the app's
+                // hidden-title-bar windows, controls included.
+                let chrome: NSWindow.StyleMask = name == "popover"
+                    ? [.borderless]
+                    : [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+                let w = NSWindow(contentRect: host.frame, styleMask: chrome, backing: .buffered, defer: false)
+                w.titlebarAppearsTransparent = true
+                w.titleVisibility = .hidden
                 w.contentView = host
                 w.setFrameOrigin(NSPoint(x: -10000, y: -10000))
                 w.orderFrontRegardless()
@@ -38,7 +45,7 @@ enum Snapshots {
             // Let tasks load listings, then capture.
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                 for (i, (name, _, _)) in shots.enumerated() {
-                    guard let v = windows[i].contentView,
+                    guard let v = windows[i].contentView?.superview ?? windows[i].contentView,
                           let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { continue }
                     v.cacheDisplay(in: v.bounds, to: rep)
                     try? rep.representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent("\(name).png"))

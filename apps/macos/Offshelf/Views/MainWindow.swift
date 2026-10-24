@@ -40,6 +40,9 @@ struct MainWindow: View {
         }
         .background(Fog.surface)
         .foregroundStyle(Fog.ink)
+        // Run under the hidden title bar: the window controls sit on the
+        // sidebar, with no separate strip above the content.
+        .ignoresSafeArea()
         .task(id: model.revision) { loadPins() }
     }
 
@@ -60,7 +63,9 @@ struct MainWindow: View {
             Spacer()
             usage
         }
-        .padding(.horizontal, 10).padding(.vertical, 14)
+        .padding(.horizontal, 10)
+        .padding(.top, 44)
+        .padding(.bottom, 14)
         .frame(width: 210)
         .background(Fog.sidebar)
     }

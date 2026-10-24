@@ -169,7 +169,7 @@ struct OnboardingView: View {
             }
             VStack(alignment: .leading, spacing: 6) {
                 Text("Or enter an address").font(.system(size: 12)).foregroundStyle(Fog.secondary)
-                TextField("http://192.168.1.40:8740", text: $address).fogField()
+                TextField("192.168.1.40:8740", text: $address).fogField()
                     .onChange(of: address) { _, a in if !a.isEmpty { chosen = nil } }
             }
         }

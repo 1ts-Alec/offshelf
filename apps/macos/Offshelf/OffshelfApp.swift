@@ -23,6 +23,7 @@ struct OffshelfApp: App {
         }
         .defaultSize(width: 980, height: 620)
         .windowResizability(.contentMinSize)
+        .windowStyle(.hiddenTitleBar)
 
         Window("Welcome to Offshelf", id: "onboarding") {
             OnboardingView()
@@ -38,6 +39,7 @@ struct OffshelfApp: App {
                 .frame(width: 520, height: 300)
         }
         .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
     }
 
     private func start() {

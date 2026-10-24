@@ -206,9 +206,10 @@ struct UnlockView: View {
             .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Fog.accent)
             Spacer()
         }
-        .padding(32)
+        .padding(.horizontal, 32).padding(.top, 44).padding(.bottom, 24)
         .background(Fog.surface)
         .foregroundStyle(Fog.ink)
+        .ignoresSafeArea()
     }
 
     private func unlock() {
