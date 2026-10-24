@@ -3,6 +3,7 @@
 
 use std::io::{Read, Write};
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::{bail, ensure, Context};
 use ed25519_dalek::{SigningKey, VerifyingKey};
@@ -78,7 +79,7 @@ pub fn pair(home: &Home, url: &str, code: &str, name: &str) -> anyhow::Result<Co
     Ok(config)
 }
 
-pub fn connect(home: &Home) -> anyhow::Result<(Config, Client)> {
+pub fn connect(home: &Home) -> anyhow::Result<(Config, Arc<Client>)> {
     let config = home.config()?;
     let mut server_pub = [0u8; 32];
     hex::decode_to_slice(&config.server_pubkey, &mut server_pub)?;
@@ -88,7 +89,7 @@ pub fn connect(home: &Home) -> anyhow::Result<(Config, Client)> {
         home.device_key()?,
         VerifyingKey::from_bytes(&server_pub)?,
     );
-    Ok((config, client))
+    Ok((config, Arc::new(client)))
 }
 
 /// Creates the vault on a Pi that has none yet. Returns the recovery words.
@@ -106,6 +107,18 @@ pub fn init(client: &Client, passphrase: &str, kdf: Kdf) -> anyhow::Result<Strin
 pub enum Unlock<'a> {
     Passphrase(&'a str),
     Recovery(&'a str),
+    /// A master key kept from an earlier unlock (the Mac app's Keychain).
+    MasterKey(Key),
+}
+
+impl Unlock<'_> {
+    fn master_key(&self, header: &VaultHeader) -> anyhow::Result<Key> {
+        Ok(match self {
+            Unlock::Passphrase(p) => header.unlock(p)?,
+            Unlock::Recovery(w) => header.unlock_with_recovery(w)?,
+            Unlock::MasterKey(k) => *k,
+        })
+    }
 }
 
 pub fn fetch_vault(client: &Client) -> anyhow::Result<(VaultHeader, String)> {
@@ -119,10 +132,7 @@ pub fn fetch_vault(client: &Client) -> anyhow::Result<(VaultHeader, String)> {
 /// Re-wraps the master key under a new passphrase.
 pub fn change_passphrase(client: &Client, old: Unlock, new: &str) -> anyhow::Result<()> {
     let (header, etag) = fetch_vault(client)?;
-    let mk = match old {
-        Unlock::Passphrase(p) => header.unlock(p)?,
-        Unlock::Recovery(w) => header.unlock_with_recovery(w)?,
-    };
+    let mk = old.master_key(&header)?;
     let changed = header.change_passphrase(&mk, new)?;
     client
         .put("/v1/vault", &[("if-match", etag)], &changed.encode())?
@@ -131,9 +141,9 @@ pub fn change_passphrase(client: &Client, old: Unlock, new: &str) -> anyhow::Res
 }
 
 /// An unlocked, verified view of the shelf.
-pub struct Shelf<'a> {
-    home: &'a Home,
-    client: &'a Client,
+pub struct Shelf {
+    home: Home,
+    client: Arc<Client>,
     device_id: Id,
     device_name: String,
     master_key: Key,
@@ -149,17 +159,14 @@ pub struct Uploaded {
     pub size: u64,
 }
 
-impl<'a> Shelf<'a> {
-    pub fn open(home: &'a Home, config: &Config, client: &'a Client, unlock: Unlock) -> anyhow::Result<Self> {
+impl Shelf {
+    pub fn open(home: &Home, config: &Config, client: &Arc<Client>, unlock: Unlock) -> anyhow::Result<Self> {
         let (header, _) = fetch_vault(client)?;
-        let master_key = match unlock {
-            Unlock::Passphrase(p) => header.unlock(p)?,
-            Unlock::Recovery(w) => header.unlock_with_recovery(w)?,
-        };
+        let master_key = unlock.master_key(&header)?;
         let km = keys::manifest_key(&master_key, &header.vault_id);
         let mut shelf = Shelf {
-            home,
-            client,
+            home: home.clone(),
+            client: client.clone(),
             device_id: hex16(&config.device_id)?,
             device_name: config.device_name.clone(),
             master_key,
@@ -171,6 +178,18 @@ impl<'a> Shelf<'a> {
         shelf.load_snapshot()?;
         shelf.catch_up()?;
         Ok(shelf)
+    }
+
+    pub fn client(&self) -> &Arc<Client> {
+        &self.client
+    }
+
+    pub fn master_key(&self) -> &Key {
+        &self.master_key
+    }
+
+    pub fn device_name(&self) -> &str {
+        &self.device_name
     }
 
     fn load_snapshot(&mut self) -> anyhow::Result<()> {
@@ -236,7 +255,7 @@ impl<'a> Shelf<'a> {
 
     /// Commits ops built by `build` against the newest head. `build` runs
     /// again on the fresh tree after every lost race.
-    fn commit(&mut self, mut build: impl FnMut(&Tree, &str) -> anyhow::Result<Vec<Op>>) -> anyhow::Result<()> {
+    pub fn commit(&mut self, mut build: impl FnMut(&Tree, &str) -> anyhow::Result<Vec<Op>>) -> anyhow::Result<()> {
         for _ in 0..COMMIT_RETRIES {
             let ops = build(&self.tree, &self.device_name)?;
             if ops.is_empty() {
@@ -287,7 +306,7 @@ impl<'a> Shelf<'a> {
         Ok(out)
     }
 
-    fn upload_object(&self, object_id: &Id, chunks: &[Vec<u8>]) -> anyhow::Result<Vec<[u8; 32]>> {
+    pub fn upload_object(&self, object_id: &Id, chunks: &[Vec<u8>]) -> anyhow::Result<Vec<[u8; 32]>> {
         let mut ids = Vec::with_capacity(chunks.len());
         for c in chunks {
             let id = chunk::chunk_id(c);
@@ -308,7 +327,7 @@ impl<'a> Shelf<'a> {
         Ok(ids)
     }
 
-    fn drop_objects(&self, objects: &[Id]) {
+    pub fn drop_objects(&self, objects: &[Id]) {
         for o in objects {
             // Best effort: an object left behind only costs space until the next
             // overwrite or a server side cleanup.
@@ -316,7 +335,7 @@ impl<'a> Shelf<'a> {
         }
     }
 
-    fn require_dir(tree: &Tree, path: &str) -> anyhow::Result<Id> {
+    pub fn require_dir(tree: &Tree, path: &str) -> anyhow::Result<Id> {
         let id = tree.resolve(path).with_context(|| format!("{path}: no such folder"))?;
         if id != ROOT {
             ensure!(tree.get(&id).map(|n| n.kind) == Some(Kind::Dir), "{path}: not a folder");
@@ -591,7 +610,7 @@ pub fn conflict_name(name: &str, device: &str) -> String {
     }
 }
 
-fn split(path: &str) -> anyhow::Result<(String, String)> {
+pub fn split(path: &str) -> anyhow::Result<(String, String)> {
     let trimmed = path.trim_matches('/');
     ensure!(!trimmed.is_empty(), "need a file name, not the root");
     Ok(match trimmed.rsplit_once('/') {
@@ -600,7 +619,7 @@ fn split(path: &str) -> anyhow::Result<(String, String)> {
     })
 }
 
-fn join(dir: &str, name: &str) -> String {
+pub fn join(dir: &str, name: &str) -> String {
     let d = dir.trim_matches('/');
     if d.is_empty() {
         name.to_string()

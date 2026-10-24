@@ -2,6 +2,7 @@
 //! checks the Pi's signature on every buffered response.
 
 use std::io::Read;
+use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, bail, Context};
@@ -14,7 +15,8 @@ const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STA
 const MAX_BODY: u64 = 40 << 20;
 
 pub struct Client {
-    base: String,
+    /// Switchable: the Mac app moves between home and tunnel addresses.
+    base: RwLock<String>,
     device_id: [u8; 16],
     key: SigningKey,
     server_key: VerifyingKey,
@@ -108,11 +110,49 @@ pub fn post_json(base: &str, path: &str, value: &serde_json::Value) -> anyhow::R
 impl Client {
     pub fn new(base: &str, device_id: [u8; 16], key: SigningKey, server_key: VerifyingKey) -> Self {
         Self {
-            base: base.trim_end_matches('/').to_string(),
+            base: RwLock::new(base.trim_end_matches('/').to_string()),
             device_id,
             key,
             server_key,
             agent: agent(),
+        }
+    }
+
+    pub fn base(&self) -> String {
+        self.base.read().expect("base lock").clone()
+    }
+
+    /// Points later requests at another address of the same Pi. Responses
+    /// are still checked against the pinned server key.
+    pub fn set_base(&self, base: &str) {
+        *self.base.write().expect("base lock") = base.trim_end_matches('/').to_string();
+    }
+
+    fn authorization(&self, method: &str, path: &str, body: &[u8]) -> ([u8; 64], String) {
+        let ts = now_ms();
+        let sig = auth::sign_request(&self.key, method, path, ts, body);
+        let header = format!(
+            "{} device={}, ts={ts}, sig={}",
+            auth::SCHEME,
+            hex::encode(self.device_id),
+            B64.encode(sig)
+        );
+        (sig, header)
+    }
+
+    /// Signed GET whose body is read as it arrives (the event stream).
+    /// `idle` bounds the wait for each read, so a dead link shows up.
+    pub fn get_stream(&self, path: &str, idle: std::time::Duration) -> anyhow::Result<Box<dyn Read + Send>> {
+        let (_, authorization) = self.authorization("GET", path, &[]);
+        let agent = ureq::AgentBuilder::new()
+            .timeout_connect(std::time::Duration::from_secs(10))
+            .timeout_read(idle)
+            .build();
+        let url = format!("{}{path}", self.base());
+        match agent.get(&url).set("authorization", &authorization).call() {
+            Ok(r) => Ok(Box::new(r.into_reader())),
+            Err(ureq::Error::Status(code, _)) => bail!("server answered {code} for {path}"),
+            Err(e) => Err(anyhow!(e).context(format!("GET {url}"))),
         }
     }
 
@@ -126,19 +166,10 @@ impl Client {
         body: &[u8],
         streamed: bool,
     ) -> anyhow::Result<Reply> {
-        let ts = now_ms();
-        let sig = auth::sign_request(&self.key, method, path, ts, body);
-        let mut headers = vec![(
-            "authorization",
-            format!(
-                "{} device={}, ts={ts}, sig={}",
-                auth::SCHEME,
-                hex::encode(self.device_id),
-                B64.encode(sig)
-            ),
-        )];
+        let (sig, authorization) = self.authorization(method, path, body);
+        let mut headers = vec![("authorization", authorization)];
         headers.extend(extra.iter().cloned());
-        let reply = send(&self.agent, method, &format!("{}{path}", self.base), &headers, body)?;
+        let reply = send(&self.agent, method, &format!("{}{path}", self.base()), &headers, body)?;
         if reply.status == 401 {
             return reply.ok();
         }

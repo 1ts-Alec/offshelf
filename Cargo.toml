@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/oshelf-core", "crates/oshelfd", "crates/oshelf"]
+members = ["crates/oshelf-core", "crates/oshelfd", "crates/oshelf", "crates/oshelf-mac"]
 exclude = ["fuzz"]
 
 [workspace.package]
