@@ -272,14 +272,16 @@ Generation uses a fixed seed.
 | range.json | Range to span and trim, edges at 0, 2^20, end of file |
 | auth.json | Request and response signatures, pairing HMACs |
 
-These three exist now and are checked by `crates/oshelf-core/tests/vectors.rs`.
-kdf.json, vault.json, and manifest.json (Argon2id and HKDF, vault slots, Node
-and LogEntry CBOR, sealed entries, chain, rollback) arrive with the client side
-crypto in oshelf-core.
+| kdf.json | Argon2id passphrase key, HKDF subkeys, recovery words |
+| vault.json | Sealed vault header opened by passphrase and by recovery words; tampered header |
+| manifest.json | Five chained log entries (CBOR, sealed, entry hashes); skipped and replayed entries |
+
+All six are checked by `crates/oshelf-core/tests/vectors.rs`. vault.json has
+random nonces, so it is checked by opening it rather than rebuilding it.
 
 cargo-fuzz runs nightly (`fuzz/`, `.github/workflows/fuzz.yml`) on chunk
-parse and open, the range mapper, and signature and pairing checks. CBOR
-decode and chain verification targets join when that code lands. Crash inputs become regression vectors.
+parse and open, the range mapper, signature and pairing checks, and sealed log
+entries, snapshot headers, vault headers and CBOR decode (`manifest_open`). Crash inputs become regression vectors.
 
 ## Decisions (2026-10-24)
 

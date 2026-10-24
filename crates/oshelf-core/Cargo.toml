@@ -14,6 +14,14 @@ thiserror.workspace = true
 ed25519-dalek.workspace = true
 hmac.workspace = true
 sha2.workspace = true
+argon2 = "0.5"
+bip39 = "2"
+ciborium = "0.2"
+hkdf = "0.12"
+serde = { version = "1", features = ["derive"] }
+serde_bytes = "0.11"
+unicode-normalization = "0.1"
+zstd = "0.13"
 
 [dev-dependencies]
 hex.workspace = true
