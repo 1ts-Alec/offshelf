@@ -1,0 +1,11 @@
+//! Shared Offshelf logic: the sealed chunk format, chunk ids and byte range
+//! mapping. See `spec/crypto.md` for the normative description.
+
+pub mod chunk;
+pub mod range;
+
+pub use chunk::{chunk_id, open_chunk, parse_header, seal_chunk, seal_chunk_with_nonce, ChunkError, ChunkHeader};
+pub use range::{chunk_span, ChunkSpan};
+
+/// Plaintext bytes per chunk in format v1.
+pub const CHUNK_SIZE: u32 = 1 << 20;
