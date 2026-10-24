@@ -139,7 +139,10 @@ Writes land in a local staging file and upload in the background once quiet;
 | `GET /v1/usage` | Chunk count, stored bytes, objects, revision |
 | `POST /v1/pair` | Pair a device with a code (unsigned) |
 | `POST /v1/pairing-codes` | Make a pairing code from a paired device |
-| `GET /v1/devices` | List paired devices |
+| `DELETE /v1/pairing-codes/{code}` | Cancel an unused pairing code |
+| `GET /v1/devices` | List paired devices, with last seen and online |
+| `GET` / `PUT /v1/hosts` | Sealed shared host list (`If-Match` with its hash to replace) |
+| `POST /v1/gc` | Delete chunks no file version references (older than a day) |
 | `DELETE /v1/devices/{id}` | Revoke a device |
 
 ## License

@@ -7,6 +7,7 @@ import { bytes, clock } from "../lib/format";
 import type { NodeView, Session, UploadProgress } from "../lib/session";
 import { Files } from "./Files";
 import { Preview } from "./Preview";
+import { Admin } from "./Admin";
 
 // ---- routing ----------------------------------------------------------------
 
@@ -68,6 +69,7 @@ export interface AppCtx {
   upload(parent: string, files: File[]): void;
   download(node: NodeView): void;
   dialog: DialogApi;
+  lock(): void;
 }
 
 export const Ctx = createContext<AppCtx>(null as unknown as AppCtx);
@@ -121,7 +123,7 @@ export function Shell({ session, onLock }: { session: Session; onLock: () => voi
     return () => removeEventListener("beforeunload", warn);
   }, [busy]);
 
-  const ctx: AppCtx = { session, upload, download, dialog: dialog.api };
+  const ctx: AppCtx = { session, upload, download, dialog: dialog.api, lock: onLock };
 
   return (
     <Ctx.Provider value={ctx}>
@@ -167,18 +169,10 @@ export function Shell({ session, onLock }: { session: Session; onLock: () => voi
       )}
       {route.view === "files" && <Files dir={route.dir} query={query} clearQuery={() => setQuery("")} />}
       {route.view === "preview" && <Preview id={route.id} />}
-      {route.view === "admin" && <AdminPlaceholder />}
+      {route.view === "admin" && <Admin />}
       <Toasts jobs={jobs} dismiss={dismiss} retry={(j) => (dismiss(j.key), upload(j.parent, j.files.filter((f) => j.progress.failed.some((x) => x.name === f.name))))} />
       {dialog.element}
     </Ctx.Provider>
-  );
-}
-
-function AdminPlaceholder() {
-  return (
-    <main class="admin">
-      <h1>Your shelf</h1>
-    </main>
   );
 }
 
@@ -323,7 +317,7 @@ function useDialogs() {
   return { api, element: open ? <DialogView open={open} close={close} /> : null };
 }
 
-function Modal({ onCancel, children }: { onCancel: () => void; children: ComponentChildren }) {
+export function Modal({ onCancel, children }: { onCancel: () => void; children: ComponentChildren }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     ref.current?.showModal();

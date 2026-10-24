@@ -33,6 +33,68 @@ pub struct AppState {
     pub replays: Arc<auth::ReplayCache>,
     /// The web app served at `/`, if any.
     pub web: Option<Arc<web::WebApp>>,
+    pub presence: Arc<Presence>,
+    pub started_at: std::time::Instant,
+}
+
+/// When each device last made a request, and which hold the event stream
+/// open, for "online now" in the admin.
+#[derive(Default)]
+pub struct Presence {
+    seen: std::sync::Mutex<std::collections::HashMap<db::Id16, i64>>,
+    streams: std::sync::Mutex<std::collections::HashMap<db::Id16, usize>>,
+}
+
+/// A device counts as online this long after its last request.
+pub const ONLINE_WINDOW_MS: i64 = 120_000;
+
+impl Presence {
+    pub fn touch(&self, device: db::Id16, now_ms: i64) {
+        self.seen
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(device, now_ms);
+    }
+
+    pub fn last_seen(&self, device: &db::Id16) -> Option<i64> {
+        self.seen.lock().unwrap_or_else(|p| p.into_inner()).get(device).copied()
+    }
+
+    pub fn streaming(&self, device: &db::Id16) -> bool {
+        self.streams
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(device)
+            .is_some_and(|n| *n > 0)
+    }
+
+    /// Marks an open event stream until the guard drops.
+    pub fn stream(self: &Arc<Self>, device: db::Id16) -> StreamGuard {
+        *self
+            .streams
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .entry(device)
+            .or_default() += 1;
+        StreamGuard {
+            presence: self.clone(),
+            device,
+        }
+    }
+}
+
+pub struct StreamGuard {
+    presence: Arc<Presence>,
+    device: db::Id16,
+}
+
+impl Drop for StreamGuard {
+    fn drop(&mut self) {
+        let mut s = self.presence.streams.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(n) = s.get_mut(&self.device) {
+            *n = n.saturating_sub(1);
+        }
+    }
 }
 
 impl AppState {
@@ -50,6 +112,8 @@ impl AppState {
             server_key,
             replays: Arc::default(),
             web: web::WebApp::default_app().map(Arc::new),
+            presence: Arc::default(),
+            started_at: std::time::Instant::now(),
         })
     }
 }

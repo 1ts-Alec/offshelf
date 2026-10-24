@@ -67,6 +67,12 @@ CREATE TABLE IF NOT EXISTS vault (
     hash        BLOB NOT NULL,
     blob        BLOB NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS sealed_settings (
+    name        TEXT PRIMARY KEY,
+    hash        BLOB NOT NULL,
+    blob        BLOB NOT NULL
+) WITHOUT ROWID;
 "#;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -122,6 +128,8 @@ pub const SNAPSHOTS_KEPT: usize = 2;
 pub struct Usage {
     pub chunks: u64,
     pub stored_bytes: u64,
+    /// Chunks no file version references: what the next gc frees.
+    pub unreferenced_bytes: u64,
     pub objects: u64,
     pub revision: u64,
 }
@@ -344,6 +352,41 @@ impl Inner {
         Ok(Some(hash))
     }
 
+    /// A sealed setting blob (the shared host list) and its hash.
+    pub fn setting(&mut self, name: &str) -> rusqlite::Result<Option<(Id32, Vec<u8>)>> {
+        self.conn
+            .query_row("SELECT hash, blob FROM sealed_settings WHERE name = ?1", [name], |r| {
+                Ok((to32(r.get(0)?), r.get(1)?))
+            })
+            .optional()
+    }
+
+    /// Replaces a sealed setting if `expected` is the current hash (`None`
+    /// when there is none yet). Returns the new hash, or `None` on a race.
+    pub fn put_setting(&mut self, name: &str, expected: Option<Id32>, blob: &[u8]) -> rusqlite::Result<Option<Id32>> {
+        let tx = self
+            .conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let current: Option<Vec<u8>> = tx
+            .query_row("SELECT hash FROM sealed_settings WHERE name = ?1", [name], |r| r.get(0))
+            .optional()?;
+        if current.map(to32) != expected {
+            return Ok(None);
+        }
+        let hash = *blake3::hash(blob).as_bytes();
+        tx.execute(
+            "INSERT INTO sealed_settings (name, hash, blob) VALUES (?1, ?2, ?3)
+             ON CONFLICT(name) DO UPDATE SET hash = excluded.hash, blob = excluded.blob",
+            params![name, &hash[..], blob],
+        )?;
+        tx.commit()?;
+        Ok(Some(hash))
+    }
+
+    pub fn delete_pairing_code(&mut self, code: &str) -> rusqlite::Result<bool> {
+        Ok(self.conn.execute("DELETE FROM pairing_codes WHERE code = ?1", [code])? > 0)
+    }
+
     pub fn usage(&mut self) -> rusqlite::Result<Usage> {
         let (chunks, stored_bytes): (i64, i64) =
             self.conn
@@ -351,10 +394,17 @@ impl Inner {
                     Ok((r.get(0)?, r.get(1)?))
                 })?;
         let objects: i64 = self.conn.query_row("SELECT COUNT(*) FROM objects", [], |r| r.get(0))?;
+        let unreferenced_bytes: i64 = self.conn.query_row(
+            "SELECT COALESCE(SUM(c.stored_size), 0) FROM chunks c
+             WHERE NOT EXISTS (SELECT 1 FROM object_chunks oc WHERE oc.chunk_id = c.id)",
+            [],
+            |r| r.get(0),
+        )?;
         let (revision, _) = self.head()?;
         Ok(Usage {
             chunks: chunks as u64,
             stored_bytes: stored_bytes as u64,
+            unreferenced_bytes: unreferenced_bytes as u64,
             objects: objects as u64,
             revision,
         })
@@ -578,6 +628,16 @@ mod tests {
         orphans.sort();
         assert_eq!(orphans, vec![a, b]);
         assert!(d.unreferenced_chunks(3600).unwrap().is_empty());
+    }
+
+    #[test]
+    fn sealed_settings_compare_and_swap() {
+        let mut d = db();
+        assert_eq!(d.setting("hosts").unwrap(), None);
+        let h1 = d.put_setting("hosts", None, b"a").unwrap().unwrap();
+        assert_eq!(d.put_setting("hosts", None, b"b"), Ok(None));
+        let h2 = d.put_setting("hosts", Some(h1), b"b").unwrap().unwrap();
+        assert_eq!(d.setting("hosts").unwrap(), Some((h2, b"b".to_vec())));
     }
 
     #[test]

@@ -36,6 +36,9 @@ const MAX_LOG_ENTRY: usize = 16 << 20;
 const MAX_VAULT: usize = 64 << 10;
 const MAX_LOG_PAGE: u32 = 1000;
 const MAX_SNAPSHOT_HEADER: usize = 1 << 20;
+const MAX_SETTING: usize = 64 << 10;
+/// Unreferenced chunks younger than this survive a gc (uploads in flight).
+const GC_GRACE_SECS: i64 = 24 * 3600;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -69,6 +72,15 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/events", get(events))
         .route("/v1/pair", axum::routing::post(auth::pair))
         .route("/v1/pairing-codes", axum::routing::post(auth::create_pairing_code))
+        .route(
+            "/v1/pairing-codes/{code}",
+            axum::routing::delete(auth::cancel_pairing_code),
+        )
+        .route(
+            "/v1/hosts",
+            get(get_hosts).put(put_hosts).layer(DefaultBodyLimit::max(MAX_SETTING)),
+        )
+        .route("/v1/gc", axum::routing::post(run_gc))
         .route("/v1/devices", get(auth::list_devices))
         .route("/v1/devices/{id}", axum::routing::delete(auth::revoke_device))
         .fallback(fallback)
@@ -113,7 +125,49 @@ async fn usage(State(s): State<AppState>) -> ApiResult<Json<serde_json::Value>> 
         v["disk_free"] = free.into();
         v["disk_total"] = total.into();
     }
+    v["version"] = env!("CARGO_PKG_VERSION").into();
+    v["uptime_secs"] = s.started_at.elapsed().as_secs().into();
     Ok(Json(v))
+}
+
+/// Deletes chunks no file version references (older than a day).
+async fn run_gc(State(s): State<AppState>) -> ApiResult<Json<serde_json::Value>> {
+    let removed = crate::gc(&s, GC_GRACE_SECS).await.map_err(ApiError::Internal)?;
+    Ok(Json(json!({ "removed_chunks": removed })))
+}
+
+// ---- shared host list ------------------------------------------------------
+
+const HOSTS: &str = "hosts";
+
+async fn get_hosts(State(s): State<AppState>) -> ApiResult<Response> {
+    let (hash, blob) = s.db.call(|db| db.setting(HOSTS)).await?.ok_or(ApiError::NotFound)?;
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/octet-stream".to_string()),
+            (header::ETAG, format!("\"{}\"", hex::encode(hash))),
+        ],
+        blob,
+    )
+        .into_response())
+}
+
+/// Stores the sealed host list. `If-Match` carries the hash of the list the
+/// client edited; leave it out only when there is none yet.
+async fn put_hosts(State(s): State<AppState>, headers: HeaderMap, body: Bytes) -> ApiResult<Response> {
+    let expected = if_match(&headers)?
+        .map(|h| parse_hex::<32>(&h, "If-Match"))
+        .transpose()?;
+    if body.len() < 4 || &body[0..4] != b"OSH1" {
+        return Err(ApiError::bad("host list must start with OSH1"));
+    }
+    match s.db.call(move |db| db.put_setting(HOSTS, expected, &body)).await? {
+        Some(hash) => Ok((StatusCode::OK, [(header::ETAG, format!("\"{}\"", hex::encode(hash)))]).into_response()),
+        None => Err(ApiError::Conflict {
+            message: "host list changed meanwhile".into(),
+            detail: json!({}),
+        }),
+    }
 }
 
 // ---- chunks ----------------------------------------------------------------
@@ -414,7 +468,11 @@ async fn put_vault(State(s): State<AppState>, headers: HeaderMap, body: Bytes) -
 
 /// Server-sent events: the current head on connect, then one `revision`
 /// event per committed log entry. A client that sees a gap fetches the log.
-async fn events(State(s): State<AppState>) -> ApiResult<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
+async fn events(
+    State(s): State<AppState>,
+    axum::Extension(crate::auth::DeviceId(device)): axum::Extension<crate::auth::DeviceId>,
+) -> ApiResult<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
+    let guard = s.presence.stream(device);
     let rx = s.events.subscribe();
     let (revision, hash) = s.db.call(|db| db.head()).await?;
     let first = RevisionEvent {
@@ -422,7 +480,8 @@ async fn events(State(s): State<AppState>) -> ApiResult<Sse<impl Stream<Item = R
         hash: hex::encode(hash),
     };
     let live = BroadcastStream::new(rx).filter_map(|e| async move { e.ok() });
-    let stream = stream::once(async { first }).chain(live).map(|ev| {
+    let stream = stream::once(async { first }).chain(live).map(move |ev| {
+        let _held = &guard;
         Ok(Event::default()
             .event("revision")
             .json_data(ev)

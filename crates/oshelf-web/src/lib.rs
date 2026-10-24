@@ -361,6 +361,23 @@ impl Shelf {
         })
     }
 
+    /// Seals the shared host list (`[{name, url, ssids}]` as JSON).
+    pub fn seal_hosts(&self, json: &str) -> Result<Vec<u8>> {
+        let hosts: Vec<oshelf_core::hosts::Host> = serde_json::from_str(json).map_err(err)?;
+        Ok(oshelf_core::hosts::seal_hosts(
+            &self.master_key,
+            &self.vault_id,
+            &oshelf_core::hosts::HostList { hosts },
+        ))
+    }
+
+    /// Opens the shared host list; returns it as JSON.
+    pub fn open_hosts(&self, sealed: &[u8]) -> Result<String> {
+        let list = oshelf_core::hosts::open_hosts(&self.master_key, &self.vault_id, sealed)
+            .ok_or_else(|| err("The host list didn't open with this shelf's key."))?;
+        serde_json::to_string(&list.hosts).map_err(err)
+    }
+
     pub fn vault_id(&self) -> String {
         hex::encode(self.vault_id)
     }
