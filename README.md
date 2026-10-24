@@ -14,6 +14,7 @@ Status: early. This repo holds the crypto spec and the server core.
 | `spec/vectors/` | Test vectors every implementation must pass |
 | `fuzz/` | cargo-fuzz targets, run nightly |
 | `crates/oshelf-core` | Chunk sealing, chunk ids, byte range mapping (shared with the Mac and web apps) |
+| `assets/brand/` | App icon, menu bar glyph and favicon |
 | `crates/oshelfd` | The server: axum API, content addressed chunk store, SQLite metadata |
 
 ## Run the server
