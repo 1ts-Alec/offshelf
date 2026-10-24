@@ -96,8 +96,15 @@ fn if_match(headers: &HeaderMap) -> ApiResult<Option<String>> {
         .transpose()
 }
 
-async fn usage(State(s): State<AppState>) -> ApiResult<Json<crate::db::Usage>> {
-    Ok(Json(s.db.call(|db| db.usage()).await?))
+/// Stored totals plus the SSD's size, so clients can show how full it is.
+async fn usage(State(s): State<AppState>) -> ApiResult<Json<serde_json::Value>> {
+    let u = s.db.call(|db| db.usage()).await?;
+    let mut v = serde_json::to_value(u).map_err(|e| ApiError::bad(e.to_string()))?;
+    if let Some((free, total)) = s.store.disk_space() {
+        v["disk_free"] = free.into();
+        v["disk_total"] = total.into();
+    }
+    Ok(Json(v))
 }
 
 // ---- chunks ----------------------------------------------------------------

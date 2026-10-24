@@ -13,6 +13,19 @@ impl ChunkStore {
         Ok(Self { root })
     }
 
+    /// Free and total bytes on the disk holding the chunks.
+    pub fn disk_space(&self) -> Option<(u64, u64)> {
+        use std::os::unix::ffi::OsStrExt;
+        let c = std::ffi::CString::new(self.root.as_os_str().as_bytes()).ok()?;
+        // SAFETY: c is a valid C string and s a zeroed out parameter.
+        let mut s: libc::statvfs = unsafe { std::mem::zeroed() };
+        if unsafe { libc::statvfs(c.as_ptr(), &mut s) } != 0 {
+            return None;
+        }
+        let frsize = s.f_frsize as u64;
+        Some((s.f_bavail as u64 * frsize, s.f_blocks as u64 * frsize))
+    }
+
     fn path(&self, id: &[u8; 32]) -> PathBuf {
         let h = hex::encode(id);
         self.root.join(&h[0..2]).join(&h[2..4]).join(h)

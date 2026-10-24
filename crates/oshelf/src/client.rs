@@ -17,6 +17,7 @@ const MAX_BODY: u64 = 40 << 20;
 pub struct Client {
     /// Switchable: the Mac app moves between home and tunnel addresses.
     base: RwLock<String>,
+    last_ts: std::sync::Mutex<i64>,
     device_id: [u8; 16],
     key: SigningKey,
     server_key: VerifyingKey,
@@ -111,6 +112,7 @@ impl Client {
     pub fn new(base: &str, device_id: [u8; 16], key: SigningKey, server_key: VerifyingKey) -> Self {
         Self {
             base: RwLock::new(base.trim_end_matches('/').to_string()),
+            last_ts: std::sync::Mutex::new(0),
             device_id,
             key,
             server_key,
@@ -129,7 +131,14 @@ impl Client {
     }
 
     fn authorization(&self, method: &str, path: &str, body: &[u8]) -> ([u8; 64], String) {
-        let ts = now_ms();
+        // Strictly increasing per client: two identical requests in the same
+        // millisecond would otherwise carry the same signature, and the Pi
+        // rejects the second as a replay.
+        let ts = {
+            let mut last = self.last_ts.lock().expect("ts lock");
+            *last = now_ms().max(*last + 1);
+            *last
+        };
         let sig = auth::sign_request(&self.key, method, path, ts, body);
         let header = format!(
             "{} device={}, ts={ts}, sig={}",
