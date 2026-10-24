@@ -109,6 +109,7 @@ pub struct Link {
 }
 
 pub struct Engine {
+    pub(crate) home: Home,
     pub(crate) config: Config,
     pub(crate) client: Arc<Client>,
     pub(crate) shelf: Mutex<Shelf>,
@@ -147,6 +148,7 @@ impl Engine {
         // SAFETY: getuid and getgid cannot fail.
         let (uid, gid) = unsafe { (libc::getuid(), libc::getgid()) };
         let engine = Arc::new(Self {
+            home: home.clone(),
             link: Mutex::new(Link {
                 online: true,
                 host: client.base(),
