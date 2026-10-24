@@ -26,7 +26,7 @@ use crate::write::Pending;
 const MAX_BATCH: u64 = 32;
 /// Readahead window bounds, in chunks.
 const AHEAD_MIN: u64 = 1;
-const AHEAD_MAX: u64 = 64;
+const AHEAD_MAX: u64 = 16;
 
 /// Why an operation failed, in the terms NFS needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -362,7 +362,7 @@ impl Engine {
     }
 
     /// Updates the read pattern of a file and returns how many chunks to
-    /// read past this request (0: nothing new to start). The window is half
+    /// read past this request (0: nothing new to start). The window is a quarter
     /// of what has been read in order since the last seek, so a scrub that
     /// grabs one frame moves little, and steady playback builds a deep
     /// buffer.
@@ -383,7 +383,7 @@ impl Engine {
         if sequential && !new_chunk {
             return 0;
         }
-        (s.run / cs / 2).clamp(AHEAD_MIN, AHEAD_MAX)
+        (s.run / cs / 4).clamp(AHEAD_MIN, AHEAD_MAX)
     }
 
     /// Decrypted contents of chunk `idx`, from memory or disk.
