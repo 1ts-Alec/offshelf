@@ -4,6 +4,9 @@
 use axum::body::{to_bytes, Body};
 use axum::http::{header, Method, Request, StatusCode};
 use axum::Router;
+use base64::Engine;
+use ed25519_dalek::SigningKey;
+use oshelf_core::auth;
 use oshelf_core::{chunk_id, chunk_span, open_chunk, seal_chunk, CHUNK_SIZE};
 use oshelfd::{router, AppState};
 use tower::ServiceExt;
@@ -11,33 +14,86 @@ use tower::ServiceExt;
 struct Server {
     app: Router,
     state: AppState,
+    device: [u8; 16],
+    key: SigningKey,
     _dir: tempfile::TempDir,
 }
 
-fn server() -> Server {
+const CODE: &str = "7KQ2M9XD";
+
+async fn server() -> Server {
     let dir = tempfile::tempdir().unwrap();
     let state = AppState::open(dir.path()).unwrap();
-    Server {
-        app: router(state.clone()),
+    let app = router(state.clone());
+    let key = SigningKey::from_bytes(&[11; 32]);
+    let mut srv = Server {
+        app,
         state,
+        device: [0; 16],
+        key,
         _dir: dir,
-    }
+    };
+    srv.state.db.call(|db| db.add_pairing_code(CODE, 600, 5)).await.unwrap();
+    let pubkey = srv.key.verifying_key().to_bytes();
+    let (s, body) = srv.pair("7kq2-m9xd", &pubkey).await;
+    assert_eq!(s, StatusCode::OK, "{body}");
+    hex::decode_to_slice(body["device_id"].as_str().unwrap(), &mut srv.device).unwrap();
+    srv
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64
 }
 
 impl Server {
-    async fn send(&self, method: Method, uri: &str, headers: &[(&str, &str)], body: Vec<u8>) -> (StatusCode, Vec<u8>) {
-        let mut req = Request::builder().method(method).uri(uri);
+    async fn pair(&self, code: &str, pubkey: &[u8; 32]) -> (StatusCode, serde_json::Value) {
+        let nonce = [5u8; 16];
+        let req = serde_json::json!({
+            "name": "Test Mac",
+            "pubkey": hex::encode(pubkey),
+            "client_nonce": hex::encode(nonce),
+            "mac": hex::encode(auth::pairing_client_mac(code, pubkey, &nonce)),
+        });
+        let res = self
+            .raw(
+                Request::post("/v1/pair")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(req.to_string()))
+                    .unwrap(),
+            )
+            .await;
+        (res.0, serde_json::from_slice(&res.1).unwrap_or_default())
+    }
+
+    async fn raw(&self, req: Request<Body>) -> (StatusCode, Vec<u8>) {
+        let res = self.app.clone().oneshot(req).await.unwrap();
+        let status = res.status();
+        (status, to_bytes(res.into_body(), usize::MAX).await.unwrap().to_vec())
+    }
+
+    fn signed(&self, method: Method, uri: &str, headers: &[(&str, &str)], body: Vec<u8>) -> Request<Body> {
+        let ts = now_ms();
+        let sig = auth::sign_request(&self.key, method.as_str(), uri, ts, &body);
+        let authz = format!(
+            "Oshelf device={}, ts={ts}, sig={}",
+            hex::encode(self.device),
+            base64::engine::general_purpose::STANDARD.encode(sig)
+        );
+        let mut req = Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(header::AUTHORIZATION, authz);
         for (k, v) in headers {
             req = req.header(*k, *v);
         }
-        let res = self
-            .app
-            .clone()
-            .oneshot(req.body(Body::from(body)).unwrap())
-            .await
-            .unwrap();
-        let status = res.status();
-        (status, to_bytes(res.into_body(), usize::MAX).await.unwrap().to_vec())
+        req.body(Body::from(body)).unwrap()
+    }
+
+    async fn send(&self, method: Method, uri: &str, headers: &[(&str, &str)], body: Vec<u8>) -> (StatusCode, Vec<u8>) {
+        self.raw(self.signed(method, uri, headers, body)).await
     }
 
     async fn json(&self, method: Method, uri: &str, value: serde_json::Value) -> (StatusCode, serde_json::Value) {
@@ -66,7 +122,7 @@ fn frames(body: &[u8]) -> Vec<Vec<u8>> {
 
 #[tokio::test]
 async fn upload_then_ranged_read() {
-    let srv = server();
+    let srv = server().await;
     let key = [42u8; 32];
     let file_id = [7u8; 16];
     let object_id = hex::encode([1u8; 16]);
@@ -136,7 +192,7 @@ async fn upload_then_ranged_read() {
 
 #[tokio::test]
 async fn rejects_bad_chunks_and_missing_refs() {
-    let srv = server();
+    let srv = server().await;
     let stored = seal_chunk(&[1; 32], &[2; 16], 0, b"hello");
     let wrong = hex::encode([0u8; 32]);
     let (s, _) = srv
@@ -170,7 +226,7 @@ async fn rejects_bad_chunks_and_missing_refs() {
 
 #[tokio::test]
 async fn manifest_log_compare_and_swap() {
-    let srv = server();
+    let srv = server().await;
     let (_, head) = srv
         .json(Method::GET, "/v1/manifest/head", serde_json::Value::Null)
         .await;
@@ -222,7 +278,7 @@ async fn manifest_log_compare_and_swap() {
 
 #[tokio::test]
 async fn gc_removes_chunks_after_object_delete() {
-    let srv = server();
+    let srv = server().await;
     let stored = seal_chunk(&[1; 32], &[2; 16], 0, b"bye");
     let id = hex::encode(chunk_id(&stored));
     srv.send(Method::PUT, &format!("/v1/chunks/{id}"), &[], stored).await;
@@ -242,4 +298,96 @@ async fn gc_removes_chunks_after_object_delete() {
     assert_eq!(oshelfd::gc(&srv.state, 0).await.unwrap(), 1);
     let (s, _) = srv.send(Method::GET, &format!("/v1/chunks/{id}"), &[], vec![]).await;
     assert_eq!(s, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn requests_must_be_signed_by_a_paired_device() {
+    let srv = server().await;
+    let (s, _) = srv.send(Method::GET, "/v1/usage", &[], vec![]).await;
+    assert_eq!(s, StatusCode::OK);
+
+    let (s, _) = srv.raw(Request::get("/v1/usage").body(Body::empty()).unwrap()).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED, "unsigned");
+    let (s, _) = srv.raw(Request::get("/v1/health").body(Body::empty()).unwrap()).await;
+    assert_eq!(s, StatusCode::OK, "health is public");
+
+    let req = srv.signed(Method::GET, "/v1/usage", &[], vec![]);
+    let (parts, _) = req.into_parts();
+    let replay = |p: &axum::http::request::Parts| {
+        let mut r = Request::builder().method(p.method.clone()).uri(p.uri.clone());
+        for (k, v) in &p.headers {
+            r = r.header(k, v);
+        }
+        r.body(Body::empty()).unwrap()
+    };
+    assert_eq!(srv.raw(replay(&parts)).await.0, StatusCode::OK);
+    assert_eq!(srv.raw(replay(&parts)).await.0, StatusCode::UNAUTHORIZED, "replay");
+
+    // Signature over a different body.
+    let mut req = srv.signed(
+        Method::POST,
+        "/v1/manifest/log",
+        &[("if-match", "0")],
+        b"OSL1a".to_vec(),
+    );
+    *req.body_mut() = Body::from(b"OSL1b".to_vec());
+    assert_eq!(srv.raw(req).await.0, StatusCode::UNAUTHORIZED, "tampered body");
+
+    // Signature for another path.
+    let mut req = srv.signed(Method::GET, "/v1/usage", &[], vec![]);
+    *req.uri_mut() = "/v1/devices".parse().unwrap();
+    assert_eq!(srv.raw(req).await.0, StatusCode::UNAUTHORIZED, "path swapped");
+
+    let (s, devices) = srv.json(Method::GET, "/v1/devices", serde_json::Value::Null).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(devices[0]["name"], "Test Mac");
+    let (s, _) = srv
+        .send(
+            Method::DELETE,
+            &format!("/v1/devices/{}", hex::encode(srv.device)),
+            &[],
+            vec![],
+        )
+        .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let (s, _) = srv.send(Method::GET, "/v1/usage", &[], vec![]).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED, "revoked");
+}
+
+#[tokio::test]
+async fn pairing_proves_both_sides_and_limits_guesses() {
+    let srv = server().await;
+    let (s, code) = srv
+        .json(Method::POST, "/v1/pairing-codes", serde_json::Value::Null)
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let code = code["code"].as_str().unwrap().to_string();
+
+    let new_key = SigningKey::from_bytes(&[12; 32]).verifying_key().to_bytes();
+    let (s, _) = srv.pair(CODE, &new_key).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED, "first code was already used");
+
+    let (s, body) = srv.pair(&code, &new_key).await;
+    assert_eq!(s, StatusCode::OK);
+    let mut device_id = [0u8; 16];
+    hex::decode_to_slice(body["device_id"].as_str().unwrap(), &mut device_id).unwrap();
+    let server_pubkey = srv.state.server_key.verifying_key().to_bytes();
+    assert_eq!(body["server_pubkey"], hex::encode(server_pubkey));
+    let expected = auth::pairing_server_mac(&code, &server_pubkey, &device_id, &[5; 16]);
+    assert_eq!(
+        body["mac"],
+        hex::encode(expected),
+        "device can check it paired with this Pi"
+    );
+
+    // Five wrong guesses burn a fresh code.
+    let (_, fresh) = srv
+        .json(Method::POST, "/v1/pairing-codes", serde_json::Value::Null)
+        .await;
+    let fresh = fresh["code"].as_str().unwrap().to_string();
+    let other = SigningKey::from_bytes(&[13; 32]).verifying_key().to_bytes();
+    for _ in 0..5 {
+        assert_eq!(srv.pair("WRONGWRG", &other).await.0, StatusCode::UNAUTHORIZED);
+    }
+    assert_eq!(srv.pair(&fresh, &other).await.0, StatusCode::UNAUTHORIZED);
 }

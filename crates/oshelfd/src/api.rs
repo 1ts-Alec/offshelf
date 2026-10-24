@@ -1,5 +1,5 @@
-//! HTTP API v1. Request signing (per device Ed25519 keys) lands with the
-//! pairing work; until then oshelfd must only run on a trusted LAN.
+//! HTTP API v1. Every route except health and pairing needs a signed
+//! request from a paired device (see `auth`).
 
 use std::convert::Infallible;
 use std::time::Duration;
@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio_stream::wrappers::BroadcastStream;
 
+use crate::auth;
 use crate::db::{CommitResult, Id16, Id32, ObjectResult};
 use crate::error::{ApiError, ApiResult};
 use crate::{AppState, RevisionEvent};
@@ -56,6 +57,14 @@ pub fn router(state: AppState) -> Router {
             get(get_vault).put(put_vault).layer(DefaultBodyLimit::max(MAX_VAULT)),
         )
         .route("/v1/events", get(events))
+        .route("/v1/pair", axum::routing::post(auth::pair))
+        .route("/v1/pairing-codes", axum::routing::post(auth::create_pairing_code))
+        .route("/v1/devices", get(auth::list_devices))
+        .route("/v1/devices/{id}", axum::routing::delete(auth::revoke_device))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            auth::require_signature,
+        ))
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state)
 }

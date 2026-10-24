@@ -41,6 +41,19 @@ CREATE TABLE IF NOT EXISTS manifest_log (
     created_at  INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS devices (
+    id          BLOB PRIMARY KEY,
+    name        TEXT NOT NULL,
+    pubkey      BLOB NOT NULL UNIQUE,
+    created_at  INTEGER NOT NULL
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS pairing_codes (
+    code          TEXT PRIMARY KEY,
+    expires_at    INTEGER NOT NULL,
+    attempts_left INTEGER NOT NULL
+) WITHOUT ROWID;
+
 CREATE TABLE IF NOT EXISTS vault (
     id          INTEGER PRIMARY KEY CHECK (id = 1),
     hash        BLOB NOT NULL,
@@ -61,6 +74,18 @@ pub enum ObjectResult {
     MissingChunks(Vec<Id32>),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Device {
+    #[serde(serialize_with = "hex_ser")]
+    pub id: Id16,
+    pub name: String,
+    pub created_at: i64,
+}
+
+fn hex_ser<S: serde::Serializer>(v: &Id16, s: S) -> Result<S::Ok, S::Error> {
+    s.serialize_str(&hex::encode(v))
+}
+
 #[derive(Debug, Default, serde::Serialize)]
 pub struct Usage {
     pub chunks: u64,
@@ -76,7 +101,7 @@ pub struct Inner {
 #[derive(Clone)]
 pub struct Db(Arc<Mutex<Inner>>);
 
-fn now() -> i64 {
+pub fn now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -315,6 +340,85 @@ impl Inner {
     }
 }
 
+/// Devices and pairing codes.
+impl Inner {
+    pub fn add_pairing_code(&mut self, code: &str, ttl_secs: i64, attempts: i64) -> rusqlite::Result<i64> {
+        let expires_at = now() + ttl_secs;
+        self.conn.execute(
+            "INSERT INTO pairing_codes (code, expires_at, attempts_left) VALUES (?1, ?2, ?3)",
+            params![code, expires_at, attempts],
+        )?;
+        Ok(expires_at)
+    }
+
+    /// Codes that are neither expired nor out of attempts. Prunes the rest.
+    pub fn live_pairing_codes(&mut self) -> rusqlite::Result<Vec<String>> {
+        self.conn.execute(
+            "DELETE FROM pairing_codes WHERE expires_at < ?1 OR attempts_left <= 0",
+            [now()],
+        )?;
+        let mut q = self.conn.prepare("SELECT code FROM pairing_codes")?;
+        let rows = q.query_map([], |r| r.get(0))?;
+        rows.collect()
+    }
+
+    /// A pairing attempt matched no code: every live code loses an attempt,
+    /// so guessing is capped no matter which code an attacker aims at.
+    pub fn record_failed_pairing(&mut self) -> rusqlite::Result<()> {
+        self.conn
+            .execute("UPDATE pairing_codes SET attempts_left = attempts_left - 1", [])?;
+        Ok(())
+    }
+
+    /// Uses up `code` and registers the device in one transaction.
+    pub fn pair_device(&mut self, code: &str, id: &Id16, name: &str, pubkey: &[u8; 32]) -> rusqlite::Result<bool> {
+        let tx = self
+            .conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        if tx.execute(
+            "DELETE FROM pairing_codes WHERE code = ?1 AND expires_at >= ?2",
+            params![code, now()],
+        )? != 1
+        {
+            return Ok(false);
+        }
+        tx.execute(
+            "INSERT INTO devices (id, name, pubkey, created_at) VALUES (?1, ?2, ?3, ?4)",
+            params![&id[..], name, &pubkey[..], now()],
+        )?;
+        tx.commit()?;
+        Ok(true)
+    }
+
+    pub fn device_pubkey(&mut self, id: &Id16) -> rusqlite::Result<Option<[u8; 32]>> {
+        self.conn
+            .query_row("SELECT pubkey FROM devices WHERE id = ?1", [&id[..]], |r| {
+                r.get::<_, Vec<u8>>(0)
+            })
+            .optional()
+            .map(|o| o.and_then(|v| v.try_into().ok()))
+    }
+
+    pub fn devices(&mut self) -> rusqlite::Result<Vec<Device>> {
+        let mut q = self
+            .conn
+            .prepare("SELECT id, name, created_at FROM devices ORDER BY created_at")?;
+        let rows = q.query_map([], |r| {
+            let id: Vec<u8> = r.get(0)?;
+            Ok(Device {
+                id: id.try_into().expect("device ids are 16 bytes"),
+                name: r.get(1)?,
+                created_at: r.get(2)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub fn revoke_device(&mut self, id: &Id16) -> rusqlite::Result<bool> {
+        Ok(self.conn.execute("DELETE FROM devices WHERE id = ?1", [&id[..]])? == 1)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -374,5 +478,25 @@ mod tests {
         assert_eq!(d.put_vault(Some([0; 32]), b"wrong"), Ok(None));
         let h2 = d.put_vault(Some(h1), b"v2").unwrap().unwrap();
         assert_eq!(d.vault().unwrap(), Some((h2, b"v2".to_vec())));
+    }
+
+    #[test]
+    fn pairing_codes_are_single_use_and_attempt_limited() {
+        let mut d = db();
+        d.add_pairing_code("AAAABBBB", 600, 2).unwrap();
+        d.add_pairing_code("CCCCDDDD", -1, 5).unwrap();
+        assert_eq!(d.live_pairing_codes().unwrap(), vec!["AAAABBBB".to_string()]);
+        assert!(d.pair_device("AAAABBBB", &[1; 16], "Mac", &[7; 32]).unwrap());
+        assert!(!d.pair_device("AAAABBBB", &[2; 16], "Again", &[8; 32]).unwrap());
+        assert_eq!(d.device_pubkey(&[1; 16]).unwrap(), Some([7; 32]));
+
+        d.add_pairing_code("EEEEFFFF", 600, 2).unwrap();
+        d.record_failed_pairing().unwrap();
+        assert_eq!(d.live_pairing_codes().unwrap().len(), 1);
+        d.record_failed_pairing().unwrap();
+        assert!(d.live_pairing_codes().unwrap().is_empty());
+
+        assert!(d.revoke_device(&[1; 16]).unwrap());
+        assert_eq!(d.device_pubkey(&[1; 16]).unwrap(), None);
     }
 }

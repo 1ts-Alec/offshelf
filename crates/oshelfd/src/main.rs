@@ -23,6 +23,12 @@ enum Command {
         #[arg(long, env = "OSHELF_BIND", default_value_t = SocketAddr::from(([0, 0, 0, 0], config::DEFAULT_PORT)))]
         bind: SocketAddr,
     },
+    /// Make a one-time code for pairing a new device (valid 10 minutes).
+    Pair,
+    /// List paired devices.
+    Devices,
+    /// Revoke a paired device by id.
+    Revoke { device_id: String },
     /// Delete chunks that no file version references.
     Gc {
         /// Keep unreferenced chunks younger than this, so uploads in flight survive.
@@ -49,6 +55,28 @@ async fn main() -> anyhow::Result<()> {
                     let _ = tokio::signal::ctrl_c().await;
                 })
                 .await?;
+        }
+        Command::Pair => {
+            let code = oshelfd::auth::new_pairing_code();
+            let c = code.clone();
+            state
+                .db
+                .call(move |db| {
+                    db.add_pairing_code(&c, oshelfd::auth::PAIRING_TTL_SECS, oshelfd::auth::PAIRING_ATTEMPTS)
+                })
+                .await?;
+            println!("{}", oshelfd::auth::display_code(&code));
+        }
+        Command::Devices => {
+            for d in state.db.call(|db| db.devices()).await? {
+                println!("{}  {}", hex::encode(d.id), d.name);
+            }
+        }
+        Command::Revoke { device_id } => {
+            let mut id = [0u8; 16];
+            hex::decode_to_slice(&device_id, &mut id)?;
+            anyhow::ensure!(state.db.call(move |db| db.revoke_device(&id)).await?, "no such device");
+            println!("revoked {device_id}");
         }
         Command::Gc { grace_hours } => {
             let removed = oshelfd::gc(&state, grace_hours * 3600).await?;
