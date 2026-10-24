@@ -218,6 +218,21 @@ gc reclaims their segments), and prunes log entries up to the older kept
 snapshot's revision. Asking for the log from before that returns 410 Gone, and
 the client loads the latest snapshot instead.
 
+### Shared host list
+
+The Pi's addresses and the Wi-Fi names that pick them are edited in the web
+admin and shared with every device. The Pi stores them opaque, so it doesn't
+learn the user's network names:
+
+```
+HostList (CBOR) { hosts: [ { url, name, ssids: [text] } ] }   first match wins
+sealed = "OSH1" || nonce (24) || XChaCha20-Poly1305(HKDF(MK, "offshelf/v1/hosts"),
+         nonce, cbor(list), aad = "OSH1")
+```
+
+`PUT /v1/hosts` replaces it with `If-Match: <hash of the list edited>`.
+Reference implementation: `crates/oshelf-core/src/hosts.rs`.
+
 ## Device auth and pairing
 
 Each device signs its requests with its Ed25519 key, because LAN traffic is

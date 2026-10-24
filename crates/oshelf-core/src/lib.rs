@@ -4,6 +4,7 @@
 
 pub mod auth;
 pub mod chunk;
+pub mod hosts;
 pub mod keys;
 pub mod manifest;
 pub mod range;

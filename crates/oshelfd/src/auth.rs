@@ -155,6 +155,7 @@ pub async fn require_signature(State(s): State<AppState>, req: Request, next: Ne
     if !s.replays.insert(parsed.sig, now) {
         return Err(unauthorized("replayed request"));
     }
+    s.presence.touch(device, now);
     let mut req = Request::from_parts(parts, Body::from(body));
     req.extensions_mut().insert(DeviceId(device));
     let res = next.run(req).await;
@@ -282,8 +283,50 @@ pub async fn create_pairing_code(State(s): State<AppState>) -> ApiResult<Json<Ne
     }))
 }
 
-pub async fn list_devices(State(s): State<AppState>) -> ApiResult<Json<Vec<db::Device>>> {
-    Ok(Json(s.db.call(|db| db.devices()).await?))
+#[derive(Serialize)]
+pub struct DeviceView {
+    #[serde(flatten)]
+    device: db::Device,
+    last_seen_ms: Option<i64>,
+    online: bool,
+    /// The device asking.
+    current: bool,
+}
+
+pub async fn list_devices(
+    State(s): State<AppState>,
+    axum::Extension(DeviceId(me)): axum::Extension<DeviceId>,
+) -> ApiResult<Json<Vec<DeviceView>>> {
+    let now = now_ms();
+    let devices = s.db.call(|db| db.devices()).await?;
+    Ok(Json(
+        devices
+            .into_iter()
+            .map(|d| {
+                let last_seen_ms = s.presence.last_seen(&d.id);
+                DeviceView {
+                    online: s.presence.streaming(&d.id)
+                        || last_seen_ms.is_some_and(|t| now - t < crate::ONLINE_WINDOW_MS),
+                    current: d.id == me,
+                    last_seen_ms,
+                    device: d,
+                }
+            })
+            .collect(),
+    ))
+}
+
+/// `DELETE /v1/pairing-codes/{code}`: cancel a code before it's used.
+pub async fn cancel_pairing_code(
+    State(s): State<AppState>,
+    axum::extract::Path(code): axum::extract::Path<String>,
+) -> ApiResult<axum::http::StatusCode> {
+    let code = auth::normalize_code(&code);
+    if s.db.call(move |db| db.delete_pairing_code(&code)).await? {
+        Ok(axum::http::StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound)
+    }
 }
 
 pub async fn revoke_device(

@@ -564,3 +564,52 @@ async fn serves_the_web_app_without_auth() {
     let (s, _) = srv.raw(Request::get("/v1/nope").body(Body::empty()).unwrap()).await;
     assert_eq!(s, StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn admin_hosts_devices_codes_gc() {
+    let srv = server().await;
+    let (s, _) = srv.send(Method::GET, "/v1/hosts", &[], vec![]).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    let (s, _) = srv.send(Method::PUT, "/v1/hosts", &[], b"nope".to_vec()).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    let (s, _) = srv.send(Method::PUT, "/v1/hosts", &[], b"OSH1one".to_vec()).await;
+    assert_eq!(s, StatusCode::OK);
+    let hash = hex::encode(blake3::hash(b"OSH1one").as_bytes());
+    let (s, _) = srv.send(Method::PUT, "/v1/hosts", &[], b"OSH1two".to_vec()).await;
+    assert_eq!(s, StatusCode::CONFLICT, "If-Match is required once a list exists");
+    let (s, _) = srv
+        .send(
+            Method::PUT,
+            "/v1/hosts",
+            &[("if-match", &format!("\"{hash}\""))],
+            b"OSH1two".to_vec(),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let (s, body) = srv.send(Method::GET, "/v1/hosts", &[], vec![]).await;
+    assert_eq!((s, body), (StatusCode::OK, b"OSH1two".to_vec()));
+
+    let (_, devices) = srv.json(Method::GET, "/v1/devices", serde_json::Value::Null).await;
+    assert_eq!(devices[0]["current"], true);
+    assert_eq!(devices[0]["online"], true);
+    assert!(devices[0]["last_seen_ms"].as_i64().unwrap() > 0);
+
+    let (_, code) = srv
+        .json(Method::POST, "/v1/pairing-codes", serde_json::Value::Null)
+        .await;
+    let code = code["code"].as_str().unwrap().to_string();
+    let (s, _) = srv
+        .send(Method::DELETE, &format!("/v1/pairing-codes/{code}"), &[], vec![])
+        .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let (s, _) = srv
+        .send(Method::DELETE, &format!("/v1/pairing-codes/{code}"), &[], vec![])
+        .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+
+    let (s, gc) = srv.json(Method::POST, "/v1/gc", serde_json::Value::Null).await;
+    assert_eq!((s, gc["removed_chunks"].as_u64()), (StatusCode::OK, Some(0)));
+    let (_, usage) = srv.json(Method::GET, "/v1/usage", serde_json::Value::Null).await;
+    assert_eq!(usage["unreferenced_bytes"], 0);
+    assert!(usage["version"].is_string());
+}
