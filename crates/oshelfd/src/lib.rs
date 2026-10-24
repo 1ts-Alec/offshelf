@@ -2,6 +2,7 @@
 //! manifest log, and never holds a key that can open either.
 
 pub mod api;
+pub mod auth;
 pub mod config;
 pub mod db;
 pub mod error;
@@ -26,6 +27,9 @@ pub struct AppState {
     pub db: db::Db,
     pub store: Arc<store::ChunkStore>,
     pub events: broadcast::Sender<RevisionEvent>,
+    /// The Pi's identity, pinned by devices at pairing.
+    pub server_key: Arc<ed25519_dalek::SigningKey>,
+    pub replays: Arc<auth::ReplayCache>,
 }
 
 impl AppState {
@@ -35,7 +39,14 @@ impl AppState {
         let db = db::Db::open(&data_dir.join("oshelf.db"))?;
         let store = Arc::new(store::ChunkStore::open(data_dir.join("chunks"))?);
         let (events, _) = broadcast::channel(256);
-        Ok(Self { db, store, events })
+        let server_key = Arc::new(auth::load_or_create_server_key(data_dir)?);
+        Ok(Self {
+            db,
+            store,
+            events,
+            server_key,
+            replays: Arc::default(),
+        })
     }
 }
 

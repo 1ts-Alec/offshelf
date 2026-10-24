@@ -228,9 +228,11 @@ Pairing:
 1. `oshelf pair` on the Pi (or Pair in the web admin from a paired device)
    shows an 8 character code, valid 10 minutes, 5 attempts.
 2. The new device generates its keypair and posts its public key and name with
-   `HMAC-SHA256(code, pubkey || client_nonce)`.
+   `HMAC-SHA256(code, "OSP1client" || pubkey || client_nonce)`.
 3. The Pi answers with the device id, its server public key, and
-   `HMAC-SHA256(code, server_pubkey || device_id || client_nonce)`.
+   `HMAC-SHA256(code, "OSP1server" || server_pubkey || device_id || client_nonce)`.
+   The HMAC key is the code uppercased with dashes and spaces removed. A
+   wrong guess costs every live code one attempt.
 4. The device pins the server public key, fetches the vault header, and
    unlocks with the passphrase (the first device runs init instead).
 

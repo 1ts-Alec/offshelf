@@ -24,8 +24,15 @@ cargo build --release
 oshelfd refuses to bind a public address. For access away from home, put
 your own tunnel (for example Cloudflare Tunnel) in front of it.
 
-Device pairing and signed requests aren't built yet, so for now only run
-oshelfd on a network you trust.
+Every request except `/v1/health` and `/v1/pair` must be signed by a paired
+device. To pair the first device, run this on the Pi and enter the code on
+the device within 10 minutes:
+
+```sh
+oshelfd --data-dir /mnt/shelf pair      # prints a code like 7KQ2-M9XD
+oshelfd --data-dir /mnt/shelf devices   # list paired devices
+oshelfd --data-dir /mnt/shelf revoke <device id>
+```
 
 ## API v1
 
@@ -42,6 +49,10 @@ oshelfd on a network you trust.
 | `GET` / `PUT /v1/vault` | Wrapped master key header |
 | `GET /v1/events` | Server-sent events, one per new revision |
 | `GET /v1/usage` | Chunk count, stored bytes, objects, revision |
+| `POST /v1/pair` | Pair a device with a code (unsigned) |
+| `POST /v1/pairing-codes` | Make a pairing code from a paired device |
+| `GET /v1/devices` | List paired devices |
+| `DELETE /v1/devices/{id}` | Revoke a device |
 
 ## License
 

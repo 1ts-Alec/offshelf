@@ -1,6 +1,7 @@
 //! Shared Offshelf logic: the sealed chunk format, chunk ids and byte range
-//! mapping. See `spec/crypto.md` for the normative description.
+//! mapping, and device request signing. See `spec/crypto.md` for the normative description.
 
+pub mod auth;
 pub mod chunk;
 pub mod range;
 
