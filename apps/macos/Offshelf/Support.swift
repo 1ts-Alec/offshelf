@@ -1,3 +1,4 @@
+import AppKit
 import CoreLocation
 import CoreWLAN
 import Foundation
@@ -68,6 +69,19 @@ final class WiFi: NSObject, CLLocationManagerDelegate {
 
     var authorized: Bool {
         location.authorizationStatus == .authorizedAlways
+    }
+
+    var undecided: Bool {
+        location.authorizationStatus == .notDetermined
+    }
+
+    /// Asks once; after a "Don't Allow" only System Settings can change it.
+    func requestPermission() {
+        if undecided {
+            location.requestWhenInUseAuthorization()
+        } else if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     func start() {

@@ -178,3 +178,35 @@ fn pin_and_offload() {
     assert_eq!(e.getattr(reel).unwrap().local, 0);
     assert!(!e.is_pinned(&movies), "offloading unpins");
 }
+
+#[test]
+fn auto_offload_drops_unpinned_files_and_keeps_pinned_ones() {
+    let pi = start_pi();
+    let local = tempfile::tempdir().unwrap();
+    let (home, video) = shelf_with_files(&pi, local.path());
+    let e = Engine::open(home, local.path().join("data"), Unlock::Passphrase(PASS)).unwrap();
+    let movies = e.lookup(ROOT_FILEID, "Movies").unwrap();
+    let reel = e.lookup(movies, "reel.mov").unwrap();
+    let note = e.lookup(ROOT_FILEID, "note.txt").unwrap();
+
+    // The note is read (cached, unpinned); the video is pinned.
+    e.read(note, 0, 10).unwrap();
+    assert!(e.getattr(note).unwrap().local > 0);
+    e.pin(e.view().tree.resolve("Movies").unwrap()).unwrap();
+    for _ in 0..100 {
+        if e.getattr(reel).unwrap().local >= video.len() as u64 {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    // Off: nothing happens even when the disk counts as full.
+    e.set_auto_offload(false, 100, oshelf_mac::settings::OffloadOrder::Oldest);
+    assert_eq!(e.auto_offload(), 0);
+
+    // A 100% threshold means "always low on space".
+    e.set_auto_offload(true, 100, oshelf_mac::settings::OffloadOrder::Biggest);
+    assert!(e.auto_offload() > 0);
+    assert_eq!(e.getattr(note).unwrap().local, 0, "unpinned file offloaded");
+    assert!(e.getattr(reel).unwrap().local >= video.len() as u64, "pinned file kept");
+}

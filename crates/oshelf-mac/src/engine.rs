@@ -605,6 +605,14 @@ impl Engine {
         freed
     }
 
+    pub fn set_auto_offload(&self, on: bool, threshold_pct: u8, order: crate::settings::OffloadOrder) {
+        let mut s = self.settings.lock().expect("settings");
+        s.auto_offload = on;
+        s.threshold_pct = threshold_pct;
+        s.offload_order = order;
+        s.save();
+    }
+
     pub fn set_cache_cap(&self, bytes: u64) {
         let mut s = self.settings.lock().expect("settings");
         s.cache_cap = bytes;

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Where a file lives, as shown in the status column and the detail pane.
@@ -88,6 +89,12 @@ struct FilesView: View {
             footer
         }
         .task(id: "\(folder)#\(model.revision)") { load() }
+        .dropDestination(for: URL.self) { urls, _ in
+            let files = urls.filter(\.isFileURL)
+            guard !files.isEmpty else { return false }
+            model.upload(files, to: folder)
+            return true
+        }
         .sheet(item: $confirm) { c in
             switch c {
             case .offload(let e): OffloadSheet(entry: e) { model.offload(e.path) }
@@ -233,9 +240,12 @@ struct FilesView: View {
         VStack(spacing: 10) {
             Spacer()
             Text(folder.isEmpty ? "Nothing on the shelf yet" : "This folder is empty").font(.display(20))
-            Text("Drag files into Offshelf in Finder.")
+            Text("Drag a folder here, or choose which folders Offshelf should hold.")
                 .font(.system(size: 13)).foregroundStyle(Fog.secondary)
-            Button("Show in Finder") { model.showInFinder(folder) }.buttonStyle(PrimaryButton())
+            HStack {
+                Button("Choose folders…", action: chooseFolders).buttonStyle(PrimaryButton())
+                Button("Show in Finder") { model.showInFinder(folder) }.buttonStyle(SecondaryButton())
+            }
             Spacer()
         }
         .frame(maxWidth: .infinity)
@@ -285,6 +295,16 @@ struct FilesView: View {
         }
         .font(.system(size: 12)).foregroundStyle(Fog.secondary)
         .padding(.horizontal, 18).frame(height: 40)
+    }
+
+    private func chooseFolders() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Upload"
+        guard panel.runModal() == .OK else { return }
+        model.upload(panel.urls, to: folder)
     }
 
     private func load() {

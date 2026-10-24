@@ -76,6 +76,14 @@ struct HostsView: View {
             let wifi = model.status?.ssid ?? (model.wifi.authorized ? "not on Wi-Fi" : "unknown")
             Text("Wi-Fi: \(wifi) · Location: \(model.wifi.authorized ? "allowed" : "not allowed")")
             Text("Health checks every 15 s · tree revision \((model.status?.revision ?? 0).formatted()), \(model.status?.online == true ? "live" : "offline")")
+            if !model.wifi.authorized {
+                HStack(spacing: 10) {
+                    Text("Wi-Fi rules need Location. Until then, hosts are tried in order.")
+                    Button(model.wifi.undecided ? "Allow Location" : "Open Settings") { model.wifi.requestPermission() }
+                        .buttonStyle(SecondaryButton())
+                }
+                .padding(.top, 6)
+            }
         }
         .font(.system(size: 12)).foregroundStyle(Fog.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
