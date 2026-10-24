@@ -11,7 +11,39 @@ enum Snapshots {
         ProcessInfo.processInfo.environment["OFFSHELF_SNAPSHOTS"].map { URL(fileURLWithPath: $0) }
     }
 
+    /// With OFFSHELF_SELFTEST=<file>: pins the first top-level folder, waits
+    /// for it to land, offloads it, and writes what happened to the file.
+    static func selfTest(_ model: AppModel) {
+        guard let out = ProcessInfo.processInfo.environment["OFFSHELF_SELFTEST"], let e = model.engine else { return }
+        Task.detached {
+            var log: [String] = []
+            func note(_ s: String) { log.append(s) }
+            do {
+                guard let folder = try e.list(path: "").first(where: { $0.isDir }) else { note("no folder"); throw OffshelfError.NotFound(path: "") }
+                note("folder \(folder.path): size \(folder.size), local \(folder.localBytes)")
+                let start = Date()
+                try e.pin(path: folder.path)
+                var cur = folder
+                while Date().timeIntervalSince(start) < 180 {
+                    cur = try e.list(path: "").first { $0.path == folder.path }!
+                    if cur.localBytes >= cur.size { break }
+                    try await Task.sleep(for: .seconds(1))
+                }
+                note(String(format: "pinned: local %llu of %llu, pinned=%@, %.0f s", cur.localBytes, cur.size, cur.pinned ? "yes" : "no", Date().timeIntervalSince(start)))
+                let freed = try e.offload(path: folder.path)
+                cur = try e.list(path: "").first { $0.path == folder.path }!
+                note("offloaded: freed \(freed), local now \(cur.localBytes), pinned=\(cur.pinned)")
+                note("events: " + e.events().prefix(3).map(\.title).joined(separator: " | "))
+            } catch {
+                note("error: \(describe(error))")
+            }
+            try? log.joined(separator: "\n").write(toFile: out, atomically: true, encoding: .utf8)
+            await MainActor.run { model.quit() }
+        }
+    }
+
     static func run(_ model: AppModel) {
+        selfTest(model)
         guard let dir else { return }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) {

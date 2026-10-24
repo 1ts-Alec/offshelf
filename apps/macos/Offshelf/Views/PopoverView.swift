@@ -42,7 +42,12 @@ struct PopoverView: View {
 
     @ViewBuilder private var running: some View {
         let s = model.status
-        if let s, !s.online {
+        if model.revoked {
+            notice("This Mac was removed from your shelf", "Pinned files are still here.", button: "Pair again…") {
+                model.signOut()
+                open("onboarding")
+            }
+        } else if let s, !s.online {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Can't reach your shelf").font(.system(size: 13, weight: .semibold))
                 Text("Retrying in the background").font(.system(size: 12)).foregroundStyle(Fog.secondary)

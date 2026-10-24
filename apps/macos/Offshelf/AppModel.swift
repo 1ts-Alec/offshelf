@@ -198,6 +198,20 @@ final class AppModel: ObservableObject {
 
     // MARK: derived
 
+    /// The Pi rejects this Mac's key: it was revoked from another device.
+    var revoked: Bool {
+        guard let e = status?.error else { return false }
+        return e.contains("answered 401")
+    }
+
+    /// Copies local files or folders onto the shelf, into `folder`.
+    func upload(_ urls: [URL], to folder: String) {
+        guard let e = engine else { return }
+        Task.detached {
+            for u in urls { e.uploadLocal(localPath: u.path, to: folder) }
+        }
+    }
+
     var isHome: Bool {
         guard let s = status else { return true }
         return !s.hostName.lowercased().contains("away") && !s.hostUrl.hasPrefix("https")
