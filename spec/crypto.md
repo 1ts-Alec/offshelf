@@ -175,14 +175,21 @@ LogEntry (CBOR)
 sealed_entry = "OSL1" || nonce (24) || XChaCha20-Poly1305(KM, nonce, zstd(cbor(entry)),
                aad = "OSL1" || u64le(revision) || prev_hash)
 entry_hash   = BLAKE3(sealed_entry)
-prev_hash of R+1 = entry_hash of R (or snapshot_hash for the first entry after a snapshot;
-                   all zeros for revision 1)
+prev_hash of R+1 = entry_hash of R (all zeros for revision 1)
 ```
+
+The chain runs unbroken through snapshots. The Pi reports the head as
+(revision, entry_hash of that entry).
 
 Snapshots are sealed as 1 MiB segments in the chunk format, with key
 HKDF(MK, "offshelf/v1/snapshot" || u64le(R)), plus a small sealed snapshot
-header holding R, the chain hash at R, the segment ids, and the node count.
-snapshot_hash is BLAKE3 of that sealed header.
+header (magic "OSN1") holding R, entry_hash at R, the segment ids, and the
+node count. A client loading snapshot R checks that entry R+1's prev_hash
+equals the entry_hash recorded in it.
+
+To store one, the client uploads the segments as chunks, registers them as an
+object, then sends `PUT /v1/manifest/snapshots/R?object=<id>` with the sealed
+header. R must be newer than the latest snapshot and at most the head.
 
 Each client remembers the highest revision and hash it has verified. If the Pi
 offers a lower revision, a different hash for a known revision, or a broken
@@ -206,8 +213,10 @@ than 10,000 entries or 64 MiB of log behind loads the latest snapshot instead.
 
 A Mac compacts in the background: when the log since the last snapshot passes
 5,000 entries or 32 MiB, it seals a snapshot at the current head and uploads
-it. The Pi keeps the newest two snapshots and the log from the older one
-onward.
+it. The Pi keeps the newest two snapshots, drops older snapshots' objects (so
+gc reclaims their segments), and prunes log entries up to the older kept
+snapshot's revision. Asking for the log from before that returns 410 Gone, and
+the client loads the latest snapshot instead.
 
 ## Device auth and pairing
 
@@ -222,6 +231,18 @@ sig = Ed25519(device_key, "OSR1" || method || "\n" || path_and_query || "\n"
 
 The Pi rejects timestamps more than 60 seconds off and remembers signatures
 inside that window to stop replays. Revoking a device deletes its public key.
+
+The Pi signs every buffered response with its server key, bound to the
+request's signature so an old response can't be replayed:
+
+```
+X-Oshelf-Sig: base64(Ed25519(server_key, "OSS1" || request_sig || u16le(status)
+                     || BLAKE3(body)))
+```
+
+Two streams are not signed, because their contents are checked end to end
+anyway: ranged chunk reads (each chunk against its id in the manifest) and the
+revision event stream (against the hash chain).
 
 Pairing:
 
@@ -247,15 +268,18 @@ Generation uses a fixed seed.
 
 | Vector file | Covers |
 | --- | --- |
-| kdf.json | Argon2id passphrase key, HKDF subkeys |
-| vault.json | Both slots, wrong passphrase, tampered slot |
 | chunk.json | Empty, 1 byte, 1 MiB, 1 MiB + 1; wrong file id, wrong index, flipped bit, bad magic, nonzero reserved |
 | range.json | Range to span and trim, edges at 0, 2^20, end of file |
-| manifest.json | Node and LogEntry CBOR, sealed entries, 5 entry chain, broken chain, rollback |
-| auth.json | Request signature, pairing HMACs |
+| auth.json | Request and response signatures, pairing HMACs |
 
-cargo-fuzz runs nightly on chunk header parse and open, CBOR decode, log chain
-verification, and the range mapper. Crash inputs become regression vectors.
+These three exist now and are checked by `crates/oshelf-core/tests/vectors.rs`.
+kdf.json, vault.json, and manifest.json (Argon2id and HKDF, vault slots, Node
+and LogEntry CBOR, sealed entries, chain, rollback) arrive with the client side
+crypto in oshelf-core.
+
+cargo-fuzz runs nightly (`fuzz/`, `.github/workflows/fuzz.yml`) on chunk
+parse and open, the range mapper, and signature and pairing checks. CBOR
+decode and chain verification targets join when that code lands. Crash inputs become regression vectors.
 
 ## Decisions (2026-10-24)
 

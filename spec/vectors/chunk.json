@@ -1,0 +1,115 @@
+{
+  "description": "Sealed chunk format v1. Plaintext byte i is i mod 251. Nonces are fixed here only to make vectors reproducible; real chunks use random nonces.",
+  "file_id": "07070707070707070707070707070707",
+  "key": "4242424242424242424242424242424242424242424242424242424242424242",
+  "nonce": "242424242424242424242424242424242424242424242424",
+  "reject": {
+    "cases": [
+      {
+        "chunk_index": 6,
+        "error": "Auth",
+        "file_id": "07070707070707070707070707070707",
+        "name": "wrong chunk index",
+        "stored_hex": "4f53433101010000242424242424242424242424242424242424242424242424ca38b116064120c03033fc9d59c3cf5508a6c8495374e004"
+      },
+      {
+        "chunk_index": 5,
+        "error": "Auth",
+        "file_id": "08080808080808080808080808080808",
+        "name": "wrong file id",
+        "stored_hex": "4f53433101010000242424242424242424242424242424242424242424242424ca38b116064120c03033fc9d59c3cf5508a6c8495374e004"
+      },
+      {
+        "chunk_index": 5,
+        "error": "Auth",
+        "file_id": "07070707070707070707070707070707",
+        "name": "flipped ciphertext bit",
+        "stored_hex": "4f53433101010000242424242424242424242424242424242424242424242424cb38b116064120c03033fc9d59c3cf5508a6c8495374e004"
+      },
+      {
+        "chunk_index": 5,
+        "error": "Auth",
+        "file_id": "07070707070707070707070707070707",
+        "name": "flipped tag bit",
+        "stored_hex": "4f53433101010000242424242424242424242424242424242424242424242424ca38b116064120c03033fc9d59c3cf5508a6c8495374e005"
+      },
+      {
+        "chunk_index": 5,
+        "error": "Auth",
+        "file_id": "07070707070707070707070707070707",
+        "name": "flipped nonce bit",
+        "stored_hex": "4f53433101010000252424242424242424242424242424242424242424242424ca38b116064120c03033fc9d59c3cf5508a6c8495374e004"
+      },
+      {
+        "chunk_index": 5,
+        "error": "BadMagic",
+        "file_id": "07070707070707070707070707070707",
+        "name": "bad magic",
+        "stored_hex": "4e53433101010000242424242424242424242424242424242424242424242424ca38b116064120c03033fc9d59c3cf5508a6c8495374e004"
+      },
+      {
+        "chunk_index": 5,
+        "error": "UnsupportedVersion(0)",
+        "file_id": "07070707070707070707070707070707",
+        "name": "unsupported version",
+        "stored_hex": "4f53433100010000242424242424242424242424242424242424242424242424ca38b116064120c03033fc9d59c3cf5508a6c8495374e004"
+      },
+      {
+        "chunk_index": 5,
+        "error": "ReservedNotZero",
+        "file_id": "07070707070707070707070707070707",
+        "name": "nonzero reserved",
+        "stored_hex": "4f53433101010100242424242424242424242424242424242424242424242424ca38b116064120c03033fc9d59c3cf5508a6c8495374e004"
+      },
+      {
+        "chunk_index": 5,
+        "error": "TooShort",
+        "file_id": "07070707070707070707070707070707",
+        "name": "truncated",
+        "stored_hex": "4f53433101010000242424242424242424242424242424242424242424242424ca38b116064120c03033fc9d59c3cf"
+      }
+    ],
+    "key": "4242424242424242424242424242424242424242424242424242424242424242",
+    "sealed_for": {
+      "chunk_index": 5,
+      "file_id": "07070707070707070707070707070707",
+      "plaintext": "offshelf"
+    }
+  },
+  "seal": [
+    {
+      "chunk_id": "a2e185f337534616e13243c52ae334974ca6ff1bf0661300711afcdacc185682",
+      "chunk_index": 0,
+      "plaintext_len": 0,
+      "stored_hex": "4f534331010100002424242424242424242424242424242424242424242424248e46cf7910c97557ed4f0b508aa08707",
+      "stored_len": 48,
+      "stored_prefix_hex": "4f534331010100002424242424242424242424242424242424242424242424248e46cf7910c97557ed4f0b508aa08707",
+      "tag_hex": "8e46cf7910c97557ed4f0b508aa08707"
+    },
+    {
+      "chunk_id": "4755aea005815fe97fa9237bfe32bd323e8b0e24f84df2a22f1411fb8d4ecf9b",
+      "chunk_index": 1,
+      "plaintext_len": 1,
+      "stored_hex": "4f53433101010000242424242424242424242424242424242424242424242424a557e78396cb06050ff2bc3bd419164103",
+      "stored_len": 49,
+      "stored_prefix_hex": "4f53433101010000242424242424242424242424242424242424242424242424a557e78396cb06050ff2bc3bd419164103",
+      "tag_hex": "57e78396cb06050ff2bc3bd419164103"
+    },
+    {
+      "chunk_id": "9d85b6b284a93d8896fced205518916a2a30081aba94412c99bc1d48dde363ca",
+      "chunk_index": 2,
+      "plaintext_len": 1048576,
+      "stored_len": 1048624,
+      "stored_prefix_hex": "4f53433101010000242424242424242424242424242424242424242424242424a55fd5666a214aa1aa263531028503c522e09ca9680a628a3978fc56770dc5d2",
+      "tag_hex": "487ac1f1c9ddfc706c1bddd80a8ae577"
+    },
+    {
+      "chunk_id": "2b6060d30b499e8dea5ba9d0be58b2dd1ab1b4f0295d8f428163976ff8bf56f4",
+      "chunk_index": 3,
+      "plaintext_len": 1048575,
+      "stored_len": 1048623,
+      "stored_prefix_hex": "4f53433101010000242424242424242424242424242424242424242424242424a55fd5666a214aa1aa263531028503c522e09ca9680a628a3978fc56770dc5d2",
+      "tag_hex": "bf9f408aec5d8ff00b491bdb455e700c"
+    }
+  ]
+}

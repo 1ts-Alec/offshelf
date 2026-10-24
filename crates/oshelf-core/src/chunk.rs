@@ -18,7 +18,7 @@ pub const TAG_LEN: usize = 16;
 /// Bytes a stored chunk adds on top of its plaintext.
 pub const OVERHEAD: usize = HEADER_LEN + TAG_LEN;
 
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 pub enum ChunkError {
     #[error("chunk shorter than header and tag")]
     TooShort,

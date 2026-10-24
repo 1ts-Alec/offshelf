@@ -409,7 +409,12 @@ async fn responses_are_signed_by_the_server() {
     );
 
     // Errors from handlers are signed too, so a 409 can't be forged.
-    let req = srv.signed(Method::POST, "/v1/manifest/log", &[("if-match", "7")], b"OSL1x".to_vec());
+    let req = srv.signed(
+        Method::POST,
+        "/v1/manifest/log",
+        &[("if-match", "7")],
+        b"OSL1x".to_vec(),
+    );
     let req_sig = sig_of(&req);
     let res = srv.app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::CONFLICT);
@@ -430,7 +435,11 @@ fn sig_of(req: &Request<Body>) -> [u8; 64] {
 
 fn header_sig(headers: &axum::http::HeaderMap) -> Option<[u8; 64]> {
     let v = headers.get("x-oshelf-sig")?.to_str().ok()?;
-    base64::engine::general_purpose::STANDARD.decode(v).ok()?.try_into().ok()
+    base64::engine::general_purpose::STANDARD
+        .decode(v)
+        .ok()?
+        .try_into()
+        .ok()
 }
 
 #[tokio::test]
@@ -451,7 +460,7 @@ async fn snapshots_compact_the_log() {
     assert_eq!(s, StatusCode::NOT_FOUND);
 
     // Each snapshot's segments are one sealed chunk registered as an object.
-    let mut put = |rev: u64, obj: [u8; 16]| {
+    let put = |rev: u64, obj: [u8; 16]| {
         let srv = &srv;
         async move {
             let seg = seal_chunk(&[8; 32], &obj, 0, format!("tree at {rev}").as_bytes());
@@ -488,7 +497,10 @@ async fn snapshots_compact_the_log() {
         .unwrap();
     assert_eq!(res.headers()["x-oshelf-revision"], "5");
     assert_eq!(res.headers()["x-oshelf-object"], hex::encode([4u8; 16]));
-    assert_eq!(&to_bytes(res.into_body(), usize::MAX).await.unwrap()[..], b"OSN1header5");
+    assert_eq!(
+        &to_bytes(res.into_body(), usize::MAX).await.unwrap()[..],
+        b"OSN1header5"
+    );
 
     // Kept snapshots are 4 and 5, so the log starts after 4.
     let (s, body) = srv.send(Method::GET, "/v1/manifest/log?since=1", &[], vec![]).await;

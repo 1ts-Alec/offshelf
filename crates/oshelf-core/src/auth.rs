@@ -61,8 +61,11 @@ pub fn sign_response(key: &SigningKey, request_sig: &[u8; 64], status: u16, body
 /// Devices check every buffered response against the server key they
 /// pinned at pairing.
 pub fn verify_response(key: &VerifyingKey, request_sig: &[u8; 64], status: u16, body: &[u8], sig: &[u8; 64]) -> bool {
-    key.verify(&response_message(request_sig, status, body), &Signature::from_bytes(sig))
-        .is_ok()
+    key.verify(
+        &response_message(request_sig, status, body),
+        &Signature::from_bytes(sig),
+    )
+    .is_ok()
 }
 
 fn hmac(code: &str, parts: &[&[u8]]) -> [u8; 32] {

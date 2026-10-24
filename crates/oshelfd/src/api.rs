@@ -248,10 +248,9 @@ struct Since {
 
 async fn manifest_log(State(s): State<AppState>, Query(q): Query<Since>) -> ApiResult<Response> {
     let limit = q.limit.unwrap_or(MAX_LOG_PAGE).clamp(1, MAX_LOG_PAGE);
-    let (oldest, entries) = s
-        .db
-        .call(move |db| Ok((db.oldest_log_revision()?, db.log_since(q.since, limit)?)))
-        .await?;
+    let (oldest, entries) =
+        s.db.call(move |db| Ok((db.oldest_log_revision()?, db.log_since(q.since, limit)?)))
+            .await?;
     if let Some(oldest) = oldest {
         if q.since + 1 < oldest {
             return Err(ApiError::Gone {
@@ -317,7 +316,11 @@ async fn put_snapshot(
     if body.len() < 4 || &body[0..4] != b"OSN1" {
         return Err(ApiError::bad("snapshot header must start with OSN1"));
     }
-    match s.db.call(move |db| db.put_snapshot(revision, &object_id, &body)).await? {
+    match s
+        .db
+        .call(move |db| db.put_snapshot(revision, &object_id, &body))
+        .await?
+    {
         SnapshotResult::Stored { hash } => Ok((
             StatusCode::CREATED,
             Json(Head {
@@ -344,8 +347,14 @@ async fn latest_snapshot(State(s): State<AppState>) -> ApiResult<Response> {
     Ok((
         [
             (header::CONTENT_TYPE, "application/octet-stream".to_string()),
-            (header::HeaderName::from_static("x-oshelf-revision"), snap.revision.to_string()),
-            (header::HeaderName::from_static("x-oshelf-object"), hex::encode(snap.object_id)),
+            (
+                header::HeaderName::from_static("x-oshelf-revision"),
+                snap.revision.to_string(),
+            ),
+            (
+                header::HeaderName::from_static("x-oshelf-object"),
+                hex::encode(snap.object_id),
+            ),
             (header::ETAG, format!("\"{}\"", hex::encode(snap.hash))),
         ],
         snap.blob,
