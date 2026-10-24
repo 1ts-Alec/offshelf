@@ -11,6 +11,8 @@ Status: early. This repo holds the crypto spec and the server core.
 | Path | What |
 | --- | --- |
 | `spec/crypto.md` | Chunk format, key hierarchy, encrypted manifest |
+| `spec/vectors/` | Test vectors every implementation must pass |
+| `fuzz/` | cargo-fuzz targets, run nightly |
 | `crates/oshelf-core` | Chunk sealing, chunk ids, byte range mapping (shared with the Mac and web apps) |
 | `crates/oshelfd` | The server: axum API, content addressed chunk store, SQLite metadata |
 
@@ -25,7 +27,7 @@ oshelfd refuses to bind a public address. For access away from home, put
 your own tunnel (for example Cloudflare Tunnel) in front of it.
 
 Every request except `/v1/health` and `/v1/pair` must be signed by a paired
-device. To pair the first device, run this on the Pi and enter the code on
+device. The Pi signs its buffered responses in turn (`X-Oshelf-Sig`). To pair the first device, run this on the Pi and enter the code on
 the device within 10 minutes:
 
 ```sh
@@ -46,6 +48,8 @@ oshelfd --data-dir /mnt/shelf revoke <device id>
 | `GET /v1/manifest/head` | Head revision and hash |
 | `GET /v1/manifest/log?since=` | Sealed log entries after a revision |
 | `POST /v1/manifest/log` | Append a sealed entry, `If-Match: <head revision>` |
+| `PUT /v1/manifest/snapshots/{rev}?object=` | Store a sealed snapshot header; segments live in `object` |
+| `GET /v1/manifest/snapshot` | Latest snapshot header (revision and object in headers) |
 | `GET` / `PUT /v1/vault` | Wrapped master key header |
 | `GET /v1/events` | Server-sent events, one per new revision |
 | `GET /v1/usage` | Chunk count, stored bytes, objects, revision |
