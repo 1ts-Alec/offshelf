@@ -71,12 +71,21 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/pairing-codes", axum::routing::post(auth::create_pairing_code))
         .route("/v1/devices", get(auth::list_devices))
         .route("/v1/devices/{id}", axum::routing::delete(auth::revoke_device))
+        .fallback(fallback)
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             auth::require_signature,
         ))
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state)
+}
+
+/// Unknown API paths are 404; everything else is the web app.
+async fn fallback(State(s): State<AppState>, req: axum::extract::Request) -> Response {
+    match &s.web {
+        Some(app) if !req.uri().path().starts_with("/v1/") => crate::web::serve(app, req).await,
+        _ => ApiError::NotFound.into_response(),
+    }
 }
 
 fn parse_hex<const N: usize>(s: &str, what: &str) -> ApiResult<[u8; N]> {

@@ -22,6 +22,9 @@ enum Command {
         /// LAN address to listen on. Public addresses are refused.
         #[arg(long, env = "OSHELF_BIND", default_value_t = SocketAddr::from(([0, 0, 0, 0], config::DEFAULT_PORT)))]
         bind: SocketAddr,
+        /// Serve the web app from this folder instead of the built-in copy.
+        #[arg(long, env = "OSHELF_WEB_DIR")]
+        web_dir: Option<PathBuf>,
     },
     /// Make a one-time code for pairing a new device (valid 10 minutes).
     Pair,
@@ -43,11 +46,15 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .init();
     let cli = Cli::parse();
-    let state = AppState::open(&cli.data_dir)?;
+    let mut state = AppState::open(&cli.data_dir)?;
 
     match cli.command {
-        Command::Serve { bind } => {
+        Command::Serve { bind, web_dir } => {
             config::check_bind(bind)?;
+            if let Some(dir) = web_dir {
+                anyhow::ensure!(dir.join("index.html").exists(), "{} has no index.html", dir.display());
+                state.web = Some(std::sync::Arc::new(oshelfd::web::WebApp::Dir(dir)));
+            }
             let listener = tokio::net::TcpListener::bind(bind).await?;
             tracing::info!(%bind, data_dir = %cli.data_dir.display(), "oshelfd listening");
             axum::serve(listener, oshelfd::router(state))

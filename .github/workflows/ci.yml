@@ -20,8 +20,35 @@ jobs:
       - name: Fuzz targets compile
         run: cargo check --manifest-path fuzz/Cargo.toml
 
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen@0.2.100
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - working-directory: apps/web
+        run: |
+          npm ci
+          npm run wasm
+          npm test
+          npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: apps/web/dist
+
   build:
-    needs: test
+    needs: [test, web]
     strategy:
       matrix:
         include:
@@ -37,7 +64,11 @@ jobs:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y musl-tools
-      - run: cargo build --release --target ${{ matrix.target }} -p oshelfd
+      - uses: actions/download-artifact@v4
+        with:
+          name: web
+          path: apps/web/dist
+      - run: cargo build --release --target ${{ matrix.target }} -p oshelfd --features web
       - uses: actions/upload-artifact@v4
         with:
           name: oshelfd-${{ matrix.target }}

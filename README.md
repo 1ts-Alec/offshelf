@@ -4,7 +4,7 @@ Self hosted, end to end encrypted file shelf. Files live on a Raspberry Pi
 with an SSD, show up in Finder like they're still on your Mac, and stream
 only the bytes an app asks for. The Pi only ever sees ciphertext.
 
-Status: early. This repo holds the crypto spec and the server core.
+Status: early. This repo holds the crypto spec, the server, the CLI, the Mac app and the web app.
 
 ## Layout
 
@@ -16,6 +16,8 @@ Status: early. This repo holds the crypto spec and the server core.
 | `crates/oshelf-core` | Chunk sealing, chunk ids, byte range mapping (shared with the Mac and web apps) |
 | `crates/oshelf` | The `oshelf` command line client |
 | `apps/macos` | The Mac app (SwiftUI): menu bar, main window, onboarding |
+| `apps/web` | The web app (Preact + TypeScript), served by oshelfd on the same port |
+| `crates/oshelf-web` | The web app's engine: `oshelf-core` compiled to WebAssembly |
 | `crates/oshelf-mac` | The Mac app's engine: loopback NFS mount, range reads, chunk cache, pins, offload, uploads, host switching |
 | `assets/brand/` | App icon, menu bar glyph and favicon |
 | `crates/oshelfd` | The server: axum API, content addressed chunk store, SQLite metadata |
@@ -78,6 +80,29 @@ reveals once Offshelf is allowed to use Location.
 
 Debug builds take `OFFSHELF_DEV_PASSPHRASE` to unlock without the Keychain,
 and `OFFSHELF_SNAPSHOTS=<dir>` to render every screen to PNGs and quit.
+
+## The web app
+
+oshelfd serves it at `/` on its LAN port (and through your tunnel), so
+`http://192.168.1.20:8740` opens it. Pair the browser with a code from
+`oshelf pair-code`, the Mac app or `oshelfd pair`, then unlock with the
+passphrase. Everything is decrypted in the browser by the Rust core compiled
+to WebAssembly; the Pi only ever sends ciphertext. The passphrase is asked
+once per tab unless "Stay unlocked for 7 days" is ticked.
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.100
+cd apps/web && npm ci
+npm run wasm     # build crates/oshelf-web into src/wasm
+npm test         # spec vectors against the WebAssembly build
+npm run build    # apps/web/dist
+```
+
+Release builds embed `dist` with `cargo build --release -p oshelfd
+--features web`. Without the feature, point the server at a build with
+`oshelfd serve --web-dir apps/web/dist`. For development, `npm run dev`
+proxies `/v1` to a local oshelfd on port 8740.
 
 ## Mount it on a Mac (development)
 

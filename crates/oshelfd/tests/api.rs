@@ -517,3 +517,50 @@ async fn snapshots_compact_the_log() {
     // Snapshot 2's segments are no longer referenced.
     assert_eq!(oshelfd::gc(&srv.state, 0).await.unwrap(), 1);
 }
+
+#[tokio::test]
+async fn serves_the_web_app_without_auth() {
+    let mut srv = server().await;
+    let web = tempfile::tempdir().unwrap();
+    std::fs::write(web.path().join("index.html"), "<!doctype html>app").unwrap();
+    std::fs::create_dir(web.path().join("assets")).unwrap();
+    std::fs::write(web.path().join("assets/app-1234.js"), "1").unwrap();
+    srv.state.web = Some(std::sync::Arc::new(oshelfd::web::WebApp::Dir(web.path().to_path_buf())));
+    srv.app = router(srv.state.clone());
+
+    let res = srv
+        .app
+        .clone()
+        .oneshot(Request::get("/").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert!(res.headers()[header::CONTENT_SECURITY_POLICY]
+        .to_str()
+        .unwrap()
+        .contains("'wasm-unsafe-eval'"));
+    assert_eq!(res.headers()[header::CACHE_CONTROL], "no-cache");
+    let res = srv
+        .app
+        .clone()
+        .oneshot(Request::get("/assets/app-1234.js").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "text/javascript; charset=utf-8");
+    assert!(res.headers()[header::CACHE_CONTROL]
+        .to_str()
+        .unwrap()
+        .contains("immutable"));
+
+    let (s, _) = srv
+        .raw(Request::get("/../oshelf.db").body(Body::empty()).unwrap())
+        .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    let (s, _) = srv.raw(Request::post("/").body(Body::empty()).unwrap()).await;
+    assert_eq!(s, StatusCode::METHOD_NOT_ALLOWED);
+    // The API still needs a signature.
+    let (s, _) = srv.raw(Request::get("/v1/usage").body(Body::empty()).unwrap()).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+    let (s, _) = srv.raw(Request::get("/v1/nope").body(Body::empty()).unwrap()).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+}

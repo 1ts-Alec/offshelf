@@ -26,8 +26,13 @@ serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs", "io-util", "net", "signal", "sync"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 tower-http = { version = "0.6", features = ["trace", "limit"] }
+include_dir = { version = "0.7", optional = true }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[features]
+# Compile the built web app (apps/web/dist) into the binary.
+web = ["dep:include_dir"]
 
 [dev-dependencies]
 tempfile = "3"
