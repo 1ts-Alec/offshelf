@@ -19,7 +19,7 @@ use serde_json::json;
 use tokio_stream::wrappers::BroadcastStream;
 
 use crate::auth;
-use crate::db::{CommitResult, Id16, Id32, ObjectResult};
+use crate::db::{CommitResult, Id16, Id32, ObjectResult, SnapshotResult};
 use crate::error::{ApiError, ApiResult};
 use crate::{AppState, RevisionEvent};
 
@@ -28,9 +28,14 @@ use crate::{AppState, RevisionEvent};
 pub const FRAMED: &str = "application/x-oshelf-frames";
 /// Most chunks one ranged read may ask for (64 MiB of plaintext).
 pub const MAX_CHUNKS_PER_READ: u64 = 64;
+/// Set on ranged chunk reads: how many frames follow.
+pub const CHUNKS_HEADER: &str = "x-oshelf-chunks";
+/// Byte budget for one page of log entries (at least one entry is returned).
+const MAX_LOG_PAGE_BYTES: usize = 32 << 20;
 const MAX_LOG_ENTRY: usize = 16 << 20;
 const MAX_VAULT: usize = 64 << 10;
 const MAX_LOG_PAGE: u32 = 1000;
+const MAX_SNAPSHOT_HEADER: usize = 1 << 20;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -56,6 +61,11 @@ pub fn router(state: AppState) -> Router {
             "/v1/vault",
             get(get_vault).put(put_vault).layer(DefaultBodyLimit::max(MAX_VAULT)),
         )
+        .route(
+            "/v1/manifest/snapshots/{revision}",
+            put(put_snapshot).layer(DefaultBodyLimit::max(MAX_SNAPSHOT_HEADER)),
+        )
+        .route("/v1/manifest/snapshot", get(latest_snapshot))
         .route("/v1/events", get(events))
         .route("/v1/pair", axum::routing::post(auth::pair))
         .route("/v1/pairing-codes", axum::routing::post(auth::create_pairing_code))
@@ -205,7 +215,7 @@ async fn read_object_chunks(
         [
             (header::CONTENT_TYPE, FRAMED.to_string()),
             (
-                header::HeaderName::from_static("x-oshelf-chunks"),
+                header::HeaderName::from_static(CHUNKS_HEADER),
                 (r.last - r.first + 1).to_string(),
             ),
         ],
@@ -238,9 +248,23 @@ struct Since {
 
 async fn manifest_log(State(s): State<AppState>, Query(q): Query<Since>) -> ApiResult<Response> {
     let limit = q.limit.unwrap_or(MAX_LOG_PAGE).clamp(1, MAX_LOG_PAGE);
-    let entries = s.db.call(move |db| db.log_since(q.since, limit)).await?;
+    let (oldest, entries) = s
+        .db
+        .call(move |db| Ok((db.oldest_log_revision()?, db.log_since(q.since, limit)?)))
+        .await?;
+    if let Some(oldest) = oldest {
+        if q.since + 1 < oldest {
+            return Err(ApiError::Gone {
+                message: "log before this revision was compacted; load the latest snapshot".into(),
+                detail: json!({ "oldest_revision": oldest }),
+            });
+        }
+    }
     let mut out = Vec::new();
     for (rev, blob) in &entries {
+        if !out.is_empty() && out.len() + blob.len() > MAX_LOG_PAGE_BYTES {
+            break;
+        }
         out.extend_from_slice(&rev.to_le_bytes());
         out.extend_from_slice(&(blob.len() as u32).to_le_bytes());
         out.extend_from_slice(blob);
@@ -272,6 +296,61 @@ async fn append_log(State(s): State<AppState>, headers: HeaderMap, body: Bytes) 
             detail: json!({ "revision": revision, "hash": hex::encode(hash) }),
         }),
     }
+}
+
+// ---- snapshots -------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct SnapshotObject {
+    object: String,
+}
+
+/// Stores a sealed snapshot header for `revision`. The segments are chunks
+/// already registered as `object`.
+async fn put_snapshot(
+    State(s): State<AppState>,
+    Path(revision): Path<u64>,
+    Query(q): Query<SnapshotObject>,
+    body: Bytes,
+) -> ApiResult<Response> {
+    let object_id: Id16 = parse_hex(&q.object, "object id")?;
+    if body.len() < 4 || &body[0..4] != b"OSN1" {
+        return Err(ApiError::bad("snapshot header must start with OSN1"));
+    }
+    match s.db.call(move |db| db.put_snapshot(revision, &object_id, &body)).await? {
+        SnapshotResult::Stored { hash } => Ok((
+            StatusCode::CREATED,
+            Json(Head {
+                revision,
+                hash: hex::encode(hash),
+            }),
+        )
+            .into_response()),
+        SnapshotResult::BadRevision { latest_snapshot, head } => Err(ApiError::Conflict {
+            message: "snapshot revision must be newer than the latest snapshot and at most the head".into(),
+            detail: json!({ "latest_snapshot": latest_snapshot, "head": head }),
+        }),
+        SnapshotResult::MissingObject => Err(ApiError::Conflict {
+            message: "snapshot object not registered".into(),
+            detail: json!({}),
+        }),
+    }
+}
+
+/// The newest snapshot header. Its revision and segment object come back in
+/// headers; the segments are read with the ranged chunk route.
+async fn latest_snapshot(State(s): State<AppState>) -> ApiResult<Response> {
+    let snap = s.db.call(|db| db.latest_snapshot()).await?.ok_or(ApiError::NotFound)?;
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/octet-stream".to_string()),
+            (header::HeaderName::from_static("x-oshelf-revision"), snap.revision.to_string()),
+            (header::HeaderName::from_static("x-oshelf-object"), hex::encode(snap.object_id)),
+            (header::ETAG, format!("\"{}\"", hex::encode(snap.hash))),
+        ],
+        snap.blob,
+    )
+        .into_response())
 }
 
 // ---- vault header ----------------------------------------------------------

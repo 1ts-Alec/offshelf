@@ -13,6 +13,8 @@ pub enum ApiError {
     NotFound,
     #[error("{message}")]
     Conflict { message: String, detail: serde_json::Value },
+    #[error("{message}")]
+    Gone { message: String, detail: serde_json::Value },
     #[error("payload too large")]
     TooLarge,
     #[error(transparent)]
@@ -46,6 +48,7 @@ impl IntoResponse for ApiError {
             ApiError::Conflict { message, detail } => {
                 (StatusCode::CONFLICT, json!({ "error": message, "detail": detail }))
             }
+            ApiError::Gone { message, detail } => (StatusCode::GONE, json!({ "error": message, "detail": detail })),
             ApiError::TooLarge => (StatusCode::PAYLOAD_TOO_LARGE, json!({ "error": "payload too large" })),
             ApiError::Internal(e) => {
                 tracing::error!(error = %e, "internal error");

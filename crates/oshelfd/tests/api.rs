@@ -391,3 +391,114 @@ async fn pairing_proves_both_sides_and_limits_guesses() {
     }
     assert_eq!(srv.pair(&fresh, &other).await.0, StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn responses_are_signed_by_the_server() {
+    let srv = server().await;
+    let req = srv.signed(Method::GET, "/v1/manifest/head", &[], vec![]);
+    let req_sig = sig_of(&req);
+    let res = srv.app.clone().oneshot(req).await.unwrap();
+    let status = res.status().as_u16();
+    let sig = header_sig(res.headers()).expect("buffered responses carry a signature");
+    let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let server_key = srv.state.server_key.verifying_key();
+    assert!(auth::verify_response(&server_key, &req_sig, status, &body, &sig));
+    assert!(
+        !auth::verify_response(&server_key, &[0; 64], status, &body, &sig),
+        "bound to the request"
+    );
+
+    // Errors from handlers are signed too, so a 409 can't be forged.
+    let req = srv.signed(Method::POST, "/v1/manifest/log", &[("if-match", "7")], b"OSL1x".to_vec());
+    let req_sig = sig_of(&req);
+    let res = srv.app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::CONFLICT);
+    let sig = header_sig(res.headers()).unwrap();
+    let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    assert!(auth::verify_response(&server_key, &req_sig, 409, &body, &sig));
+}
+
+fn sig_of(req: &Request<Body>) -> [u8; 64] {
+    let h = req.headers()[header::AUTHORIZATION].to_str().unwrap();
+    let b64 = h.split("sig=").nth(1).unwrap();
+    base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .unwrap()
+        .try_into()
+        .unwrap()
+}
+
+fn header_sig(headers: &axum::http::HeaderMap) -> Option<[u8; 64]> {
+    let v = headers.get("x-oshelf-sig")?.to_str().ok()?;
+    base64::engine::general_purpose::STANDARD.decode(v).ok()?.try_into().ok()
+}
+
+#[tokio::test]
+async fn snapshots_compact_the_log() {
+    let srv = server().await;
+    for i in 0..6u64 {
+        let (s, _) = srv
+            .send(
+                Method::POST,
+                "/v1/manifest/log",
+                &[("if-match", &i.to_string())],
+                format!("OSL1entry{i}").into_bytes(),
+            )
+            .await;
+        assert_eq!(s, StatusCode::CREATED);
+    }
+    let (s, _) = srv.send(Method::GET, "/v1/manifest/snapshot", &[], vec![]).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+
+    // Each snapshot's segments are one sealed chunk registered as an object.
+    let mut put = |rev: u64, obj: [u8; 16]| {
+        let srv = &srv;
+        async move {
+            let seg = seal_chunk(&[8; 32], &obj, 0, format!("tree at {rev}").as_bytes());
+            let id = hex::encode(chunk_id(&seg));
+            srv.send(Method::PUT, &format!("/v1/chunks/{id}"), &[], seg).await;
+            let (s, _) = srv
+                .json(
+                    Method::POST,
+                    "/v1/objects",
+                    serde_json::json!({ "id": hex::encode(obj), "chunks": [id] }),
+                )
+                .await;
+            assert_eq!(s, StatusCode::CREATED);
+            srv.send(
+                Method::PUT,
+                &format!("/v1/manifest/snapshots/{rev}?object={}", hex::encode(obj)),
+                &[],
+                format!("OSN1header{rev}").into_bytes(),
+            )
+            .await
+            .0
+        }
+    };
+    assert_eq!(put(2, [1; 16]).await, StatusCode::CREATED);
+    assert_eq!(put(9, [2; 16]).await, StatusCode::CONFLICT, "past the head");
+    assert_eq!(put(4, [3; 16]).await, StatusCode::CREATED);
+    assert_eq!(put(5, [4; 16]).await, StatusCode::CREATED);
+
+    let res = srv
+        .app
+        .clone()
+        .oneshot(srv.signed(Method::GET, "/v1/manifest/snapshot", &[], vec![]))
+        .await
+        .unwrap();
+    assert_eq!(res.headers()["x-oshelf-revision"], "5");
+    assert_eq!(res.headers()["x-oshelf-object"], hex::encode([4u8; 16]));
+    assert_eq!(&to_bytes(res.into_body(), usize::MAX).await.unwrap()[..], b"OSN1header5");
+
+    // Kept snapshots are 4 and 5, so the log starts after 4.
+    let (s, body) = srv.send(Method::GET, "/v1/manifest/log?since=1", &[], vec![]).await;
+    assert_eq!(s, StatusCode::GONE);
+    let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(body["detail"]["oldest_revision"], 5);
+    let (s, body) = srv.send(Method::GET, "/v1/manifest/log?since=4", &[], vec![]).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(u64::from_le_bytes(body[0..8].try_into().unwrap()), 5);
+
+    // Snapshot 2's segments are no longer referenced.
+    assert_eq!(oshelfd::gc(&srv.state, 0).await.unwrap(), 1);
+}

@@ -156,7 +156,38 @@ pub async fn require_signature(State(s): State<AppState>, req: Request, next: Ne
     }
     let mut req = Request::from_parts(parts, Body::from(body));
     req.extensions_mut().insert(DeviceId(device));
-    Ok(next.run(req).await)
+    let res = next.run(req).await;
+    sign_response(&s, &parsed.sig, res).await
+}
+
+/// Header carrying the server's signature over a response.
+pub const RESPONSE_SIG_HEADER: &str = "x-oshelf-sig";
+
+/// Signs buffered responses. Streams are left unsigned: chunk frames are
+/// checked against their ids from the manifest, and revision events are
+/// checked against the hash chain, so neither relies on this signature.
+async fn sign_response(s: &AppState, request_sig: &[u8; 64], res: Response) -> ApiResult<Response> {
+    let streaming = res.headers().contains_key(crate::api::CHUNKS_HEADER)
+        || res
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .is_some_and(|v| v.as_bytes().starts_with(b"text/event-stream"));
+    if streaming {
+        return Ok(res);
+    }
+    let (mut parts, body) = res.into_parts();
+    let body = to_bytes(body, usize::MAX)
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("buffering response: {e}")))?;
+    let sig = auth::sign_response(&s.server_key, request_sig, parts.status.as_u16(), &body);
+    parts.headers.insert(
+        RESPONSE_SIG_HEADER,
+        base64::engine::general_purpose::STANDARD
+            .encode(sig)
+            .parse()
+            .expect("base64 is a valid header value"),
+    );
+    Ok(Response::from_parts(parts, Body::from(body)))
 }
 
 /// The authenticated device, available to handlers as an extension.
