@@ -75,6 +75,9 @@ impl Server {
     }
 
     fn signed(&self, method: Method, uri: &str, headers: &[(&str, &str)], body: Vec<u8>) -> Request<Body> {
+        // A fresh millisecond per request, so two identical requests don't
+        // share a signature and trip replay protection.
+        std::thread::sleep(std::time::Duration::from_millis(2));
         let ts = now_ms();
         let sig = auth::sign_request(&self.key, method.as_str(), uri, ts, &body);
         let authz = format!(

@@ -1,0 +1,433 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		19CFF40A62873AB8E7578EE8 /* ActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4855756BFA469D1FA8001A3B /* ActivityView.swift */; };
+		2F97B91CE1E26D917CCC6B4C /* Snapshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DC0164186E0667DAEC99E3A /* Snapshots.swift */; };
+		33983D1D2D34A40B17F6A21E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F384D82D1181533AD2EA6469 /* Assets.xcassets */; };
+		37B00793C1B67575B5A18F72 /* MainWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = E97D685CC8E1E5BEB0650E17 /* MainWindow.swift */; };
+		623A10F078091CF85A192A58 /* HostsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECDB720563318841092E6549 /* HostsView.swift */; };
+		641A2E63C9BD0D4508219CC6 /* oshelf_mac.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4E548BE91D43FE407B5E91A /* oshelf_mac.swift */; };
+		66F471F288CD35A8FCF83C50 /* Manrope-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = D48358F73EF9B5EA00ED3D67 /* Manrope-OFL.txt */; };
+		71B05690C3A0CD5BE80E5F87 /* Support.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E83E68C289B610398284BA2 /* Support.swift */; };
+		863FE2E8C0994F251CCE976D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1792D973A892C06D864D2DF7 /* SettingsView.swift */; };
+		86F159797FD889D523ED3ECA /* OffshelfApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFE36195C22C8ABCCB3E2F41 /* OffshelfApp.swift */; };
+		87D0DDAEFCD5F6ACB144277F /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78A5ADAE4CBF4F275E74656D /* AppModel.swift */; };
+		CD58616D673FC4592C748BB5 /* PopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77E2B078786B1EE9CA049194 /* PopoverView.swift */; };
+		D95F0DF2FB81CA47CD45C9CF /* Manrope.ttf in Resources */ = {isa = PBXBuildFile; fileRef = DA8F9DB6DE4D4ECDD02E118F /* Manrope.ttf */; };
+		E71D703B145D36FB048BB3B0 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D869E2AE28C5E56DE83C5BA /* OnboardingView.swift */; };
+		E8213A5A91ADE0708B8B0E3E /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 634643AA3562BCCBBEE01601 /* Theme.swift */; };
+		FE67B8714B3F51928C0BC643 /* FilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91B72DF36C7AA31422C9D6C8 /* FilesView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		1792D973A892C06D864D2DF7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		2E83E68C289B610398284BA2 /* Support.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Support.swift; sourceTree = "<group>"; };
+		3C0F6E83C2912C502D26AB22 /* Offshelf.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Offshelf.entitlements; sourceTree = "<group>"; };
+		3D869E2AE28C5E56DE83C5BA /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		4855756BFA469D1FA8001A3B /* ActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityView.swift; sourceTree = "<group>"; };
+		634643AA3562BCCBBEE01601 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		670F5CF7D5848272C5F28EAA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		77E2B078786B1EE9CA049194 /* PopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverView.swift; sourceTree = "<group>"; };
+		78A5ADAE4CBF4F275E74656D /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		7DC0164186E0667DAEC99E3A /* Snapshots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snapshots.swift; sourceTree = "<group>"; };
+		91B72DF36C7AA31422C9D6C8 /* FilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilesView.swift; sourceTree = "<group>"; };
+		BFE36195C22C8ABCCB3E2F41 /* OffshelfApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OffshelfApp.swift; sourceTree = "<group>"; };
+		C4E548BE91D43FE407B5E91A /* oshelf_mac.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = oshelf_mac.swift; sourceTree = "<group>"; };
+		D48358F73EF9B5EA00ED3D67 /* Manrope-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Manrope-OFL.txt"; sourceTree = "<group>"; };
+		D9AB0C6948078FECFEDCC1A1 /* Offshelf.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Offshelf.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		DA8F9DB6DE4D4ECDD02E118F /* Manrope.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Manrope.ttf; sourceTree = "<group>"; };
+		E97D685CC8E1E5BEB0650E17 /* MainWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindow.swift; sourceTree = "<group>"; };
+		ECDB720563318841092E6549 /* HostsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostsView.swift; sourceTree = "<group>"; };
+		F384D82D1181533AD2EA6469 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0C1E99C388A2A27C7CD3C76B /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				F384D82D1181533AD2EA6469 /* Assets.xcassets */,
+				D48358F73EF9B5EA00ED3D67 /* Manrope-OFL.txt */,
+				DA8F9DB6DE4D4ECDD02E118F /* Manrope.ttf */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		1D22333C55B0012B7E7E8410 /* Offshelf */ = {
+			isa = PBXGroup;
+			children = (
+				78A5ADAE4CBF4F275E74656D /* AppModel.swift */,
+				670F5CF7D5848272C5F28EAA /* Info.plist */,
+				3C0F6E83C2912C502D26AB22 /* Offshelf.entitlements */,
+				BFE36195C22C8ABCCB3E2F41 /* OffshelfApp.swift */,
+				7DC0164186E0667DAEC99E3A /* Snapshots.swift */,
+				2E83E68C289B610398284BA2 /* Support.swift */,
+				634643AA3562BCCBBEE01601 /* Theme.swift */,
+				85F447C695581FD7813BA358 /* Generated */,
+				0C1E99C388A2A27C7CD3C76B /* Resources */,
+				C914A7DF9BEB2AD16CF6A6F9 /* Views */,
+			);
+			path = Offshelf;
+			sourceTree = "<group>";
+		};
+		3D22870A332B63B8DC63F36B /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				D9AB0C6948078FECFEDCC1A1 /* Offshelf.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		85F447C695581FD7813BA358 /* Generated */ = {
+			isa = PBXGroup;
+			children = (
+				C4E548BE91D43FE407B5E91A /* oshelf_mac.swift */,
+			);
+			path = Generated;
+			sourceTree = "<group>";
+		};
+		9F5665E6724270175588639C = {
+			isa = PBXGroup;
+			children = (
+				1D22333C55B0012B7E7E8410 /* Offshelf */,
+				3D22870A332B63B8DC63F36B /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		C914A7DF9BEB2AD16CF6A6F9 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				4855756BFA469D1FA8001A3B /* ActivityView.swift */,
+				91B72DF36C7AA31422C9D6C8 /* FilesView.swift */,
+				ECDB720563318841092E6549 /* HostsView.swift */,
+				E97D685CC8E1E5BEB0650E17 /* MainWindow.swift */,
+				3D869E2AE28C5E56DE83C5BA /* OnboardingView.swift */,
+				77E2B078786B1EE9CA049194 /* PopoverView.swift */,
+				1792D973A892C06D864D2DF7 /* SettingsView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		9A9EB3A812DC16E04D3210F9 /* Offshelf */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E62165C440639AEDE3F21CB2 /* Build configuration list for PBXNativeTarget "Offshelf" */;
+			buildPhases = (
+				829541E930F574913A27627C /* Build Rust engine */,
+				73D21C023FDB2F330997A8B8 /* Sources */,
+				31EF84FAAFD9490653E81A9A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Offshelf;
+			packageProductDependencies = (
+			);
+			productName = Offshelf;
+			productReference = D9AB0C6948078FECFEDCC1A1 /* Offshelf.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		89872B77A979FE8704BF50B1 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					9A9EB3A812DC16E04D3210F9 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = F848CB15C8972A968CF73D87 /* Build configuration list for PBXProject "Offshelf" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 9F5665E6724270175588639C;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 3D22870A332B63B8DC63F36B /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				9A9EB3A812DC16E04D3210F9 /* Offshelf */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		31EF84FAAFD9490653E81A9A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				33983D1D2D34A40B17F6A21E /* Assets.xcassets in Resources */,
+				66F471F288CD35A8FCF83C50 /* Manrope-OFL.txt in Resources */,
+				D95F0DF2FB81CA47CD45C9CF /* Manrope.ttf in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		829541E930F574913A27627C /* Build Rust engine */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Rust engine";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/build/rust/liboshelf_mac.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"$SRCROOT/scripts/build-rust.sh\"";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		73D21C023FDB2F330997A8B8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				19CFF40A62873AB8E7578EE8 /* ActivityView.swift in Sources */,
+				87D0DDAEFCD5F6ACB144277F /* AppModel.swift in Sources */,
+				FE67B8714B3F51928C0BC643 /* FilesView.swift in Sources */,
+				623A10F078091CF85A192A58 /* HostsView.swift in Sources */,
+				37B00793C1B67575B5A18F72 /* MainWindow.swift in Sources */,
+				86F159797FD889D523ED3ECA /* OffshelfApp.swift in Sources */,
+				E71D703B145D36FB048BB3B0 /* OnboardingView.swift in Sources */,
+				CD58616D673FC4592C748BB5 /* PopoverView.swift in Sources */,
+				863FE2E8C0994F251CCE976D /* SettingsView.swift in Sources */,
+				2F97B91CE1E26D917CCC6B4C /* Snapshots.swift in Sources */,
+				71B05690C3A0CD5BE80E5F87 /* Support.swift in Sources */,
+				E8213A5A91ADE0708B8B0E3E /* Theme.swift in Sources */,
+				641A2E63C9BD0D4508219CC6 /* oshelf_mac.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		AAE1AA4D47B3C9B2A1CC76A8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Offshelf/Offshelf.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/build/rust/include";
+				INFOPLIST_FILE = Offshelf/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/build/rust";
+				OTHER_LDFLAGS = "-loshelf_mac";
+				PRODUCT_BUNDLE_IDENTIFIER = dev.offshelf.Offshelf;
+				PRODUCT_NAME = Offshelf;
+				SDKROOT = macosx;
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/build/rust/include";
+			};
+			name = Release;
+		};
+		AAEE386CCFC930AE6DC27A7B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		BB953B702C01D232BADBAA08 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		CD249AC58A0E8461DE1CEE8D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Offshelf/Offshelf.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/build/rust/include";
+				INFOPLIST_FILE = Offshelf/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/build/rust";
+				OTHER_LDFLAGS = "-loshelf_mac";
+				PRODUCT_BUNDLE_IDENTIFIER = dev.offshelf.Offshelf;
+				PRODUCT_NAME = Offshelf;
+				SDKROOT = macosx;
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/build/rust/include";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		E62165C440639AEDE3F21CB2 /* Build configuration list for PBXNativeTarget "Offshelf" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CD249AC58A0E8461DE1CEE8D /* Debug */,
+				AAE1AA4D47B3C9B2A1CC76A8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F848CB15C8972A968CF73D87 /* Build configuration list for PBXProject "Offshelf" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AAEE386CCFC930AE6DC27A7B /* Debug */,
+				BB953B702C01D232BADBAA08 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 89872B77A979FE8704BF50B1 /* Project object */;
+}

@@ -47,10 +47,16 @@ pub struct Paired {
 
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum UnlockWith {
-    Passphrase { passphrase: String },
-    RecoveryWords { words: String },
+    Passphrase {
+        passphrase: String,
+    },
+    RecoveryWords {
+        words: String,
+    },
     /// The master key kept in the Keychain from an earlier unlock.
-    MasterKey { key: Vec<u8> },
+    MasterKey {
+        key: Vec<u8>,
+    },
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -238,7 +244,11 @@ fn kind(k: EventKind) -> EventKindFfi {
 
 impl OffshelfEngine {
     fn resolve(&self, path: &str) -> R<Id> {
-        self.engine.view().tree.resolve(path).ok_or_else(|| OffshelfError::NotFound { path: path.into() })
+        self.engine
+            .view()
+            .tree
+            .resolve(path)
+            .ok_or_else(|| OffshelfError::NotFound { path: path.into() })
     }
 }
 
@@ -253,10 +263,9 @@ impl OffshelfEngine {
             UnlockWith::Passphrase { passphrase } => Unlock::Passphrase(passphrase),
             UnlockWith::RecoveryWords { words } => Unlock::Recovery(words),
             UnlockWith::MasterKey { key: k } => {
-                key = k
-                    .as_slice()
-                    .try_into()
-                    .map_err(|_| OffshelfError::Failed { message: "stored key has the wrong length".into() })?;
+                key = k.as_slice().try_into().map_err(|_| OffshelfError::Failed {
+                    message: "stored key has the wrong length".into(),
+                })?;
                 Unlock::MasterKey(key)
             }
         };
@@ -360,12 +369,20 @@ impl OffshelfEngine {
             .filter(|n| !crate::write::local_only(&n.name))
             .map(|n| {
                 let files: Vec<_> = if n.kind == Kind::Dir {
-                    v.tree.walk(&n.id).into_iter().filter(|c| c.kind == Kind::File).collect()
+                    v.tree
+                        .walk(&n.id)
+                        .into_iter()
+                        .filter(|c| c.kind == Kind::File)
+                        .collect()
                 } else {
                     vec![n]
                 };
                 let chunks: Vec<_> = files.iter().flat_map(|f| f.chunks.iter().copied()).collect();
-                let p = if path.is_empty() { n.name.clone() } else { format!("{path}/{}", n.name) };
+                let p = if path.is_empty() {
+                    n.name.clone()
+                } else {
+                    format!("{path}/{}", n.name)
+                };
                 Entry {
                     path: p,
                     name: n.name.clone(),
@@ -375,11 +392,19 @@ impl OffshelfEngine {
                     mtime_ms: n.mtime_ns / 1_000_000,
                     pinned: self.engine.is_pinned(&n.id),
                     uploading: pending.contains_key(&crate::view::fileid(&n.id)),
-                    item_count: if n.kind == Kind::Dir { v.tree.list(&n.id).len() as u64 } else { 0 },
+                    item_count: if n.kind == Kind::Dir {
+                        v.tree.list(&n.id).len() as u64
+                    } else {
+                        0
+                    },
                 }
             })
             .collect();
-        out.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+        out.sort_by(|a, b| {
+            b.is_dir
+                .cmp(&a.is_dir)
+                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        });
         Ok(out)
     }
 
@@ -414,7 +439,11 @@ impl OffshelfEngine {
     pub fn offload(&self, path: String) -> R<u64> {
         let id = self.resolve(&path)?;
         let freed = self.engine.offload(&id);
-        let name = if path.is_empty() { "everything not pinned".to_string() } else { path.clone() };
+        let name = if path.is_empty() {
+            "everything not pinned".to_string()
+        } else {
+            path.clone()
+        };
         self.engine.activity.push(
             EventKind::Offloaded,
             &format!("Offloaded {name}"),
@@ -438,7 +467,10 @@ impl OffshelfEngine {
     pub fn offloadable_bytes(&self) -> u64 {
         let keep = self.engine.pinned_chunks();
         let v = self.engine.view();
-        let ids: Vec<_> = Engine::chunks_under(&v.tree, &ROOT).into_iter().filter(|c| !keep.contains(c)).collect();
+        let ids: Vec<_> = Engine::chunks_under(&v.tree, &ROOT)
+            .into_iter()
+            .filter(|c| !keep.contains(c))
+            .collect();
         self.engine.cache.cached_bytes(&ids)
     }
 
@@ -457,7 +489,11 @@ impl OffshelfEngine {
         s.cache_cap = settings.cache_cap;
         s.auto_offload = settings.auto_offload;
         s.threshold_pct = settings.threshold_pct.clamp(1, 90);
-        s.offload_order = if settings.offload_biggest_first { OffloadOrder::Biggest } else { OffloadOrder::Oldest };
+        s.offload_order = if settings.offload_biggest_first {
+            OffloadOrder::Biggest
+        } else {
+            OffloadOrder::Oldest
+        };
         s.save();
     }
 
@@ -538,7 +574,11 @@ impl OffshelfEngine {
 
     pub fn change_passphrase(&self, new_passphrase: String) -> R<()> {
         let key = self.engine.master_key();
-        Ok(shelf::change_passphrase(&self.engine.client, Unlock::MasterKey(key), &new_passphrase)?)
+        Ok(shelf::change_passphrase(
+            &self.engine.client,
+            Unlock::MasterKey(key),
+            &new_passphrase,
+        )?)
     }
 
     /// Copies a local file or folder onto the shelf under `to` (a shelf
@@ -547,7 +587,10 @@ impl OffshelfEngine {
         let engine = self.engine.clone();
         std::thread::spawn(move || {
             let local = PathBuf::from(&local_path);
-            let name = local.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let name = local
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
             // A second session of the same shelf, so a long upload doesn't
             // hold up the mount's own commits; both rebase on the Pi's head
             // and the mount learns the new files from the event stream.
@@ -564,7 +607,11 @@ impl OffshelfEngine {
                         &format!("From {name} · {}", crate::engine::human(bytes)),
                     )
                 }
-                Err(e) => engine.activity.push(EventKind::Error, &format!("Upload of {name} stopped"), &format!("{e:#}")),
+                Err(e) => engine.activity.push(
+                    EventKind::Error,
+                    &format!("Upload of {name} stopped"),
+                    &format!("{e:#}"),
+                ),
             }
         });
     }

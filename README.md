@@ -15,6 +15,7 @@ Status: early. This repo holds the crypto spec and the server core.
 | `fuzz/` | cargo-fuzz targets, run nightly |
 | `crates/oshelf-core` | Chunk sealing, chunk ids, byte range mapping (shared with the Mac and web apps) |
 | `crates/oshelf` | The `oshelf` command line client |
+| `apps/macos` | The Mac app (SwiftUI): menu bar, main window, onboarding |
 | `crates/oshelf-mac` | The Mac app's engine: loopback NFS mount, range reads, chunk cache, pins, offload, uploads, host switching |
 | `assets/brand/` | App icon, menu bar glyph and favicon |
 | `crates/oshelfd` | The server: axum API, content addressed chunk store, SQLite metadata |
@@ -59,6 +60,24 @@ another device), `revoke`, `passwd`, `compact`. Commands that read the shelf
 ask for the passphrase, or take it from `OSHELF_PASSPHRASE`; add `--recovery`
 to unlock with the recovery words. Device state lives in `~/.config/oshelf`
 (or `OSHELF_HOME`).
+
+## The Mac app
+
+```sh
+brew install xcodegen          # only to change project.yml
+open apps/macos/Offshelf.xcodeproj
+```
+
+Building runs `apps/macos/scripts/build-rust.sh`, which compiles
+`crates/oshelf-mac` as a static library and refreshes its Swift bindings. The
+app lives in the menu bar. It pairs, unlocks (the master key then stays in
+the Keychain), and mounts the shelf at
+`~/Library/Application Support/Offshelf/Volume/Offshelf`, which Finder lists
+under Locations. Hosts pick an address by Wi-Fi name, which macOS only
+reveals once Offshelf is allowed to use Location.
+
+Debug builds take `OFFSHELF_DEV_PASSPHRASE` to unlock without the Keychain,
+and `OFFSHELF_SNAPSHOTS=<dir>` to render every screen to PNGs and quit.
 
 ## Mount it on a Mac (development)
 

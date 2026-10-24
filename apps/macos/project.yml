@@ -1,0 +1,44 @@
+name: Offshelf
+options:
+  bundleIdPrefix: dev.offshelf
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: ""
+targets:
+  Offshelf:
+    type: application
+    platform: macOS
+    sources:
+      - path: Offshelf
+        excludes:
+          - "Resources/Manrope-OFL.txt"
+      - path: Offshelf/Resources/Manrope-OFL.txt
+        buildPhase: resources
+    preBuildScripts:
+      - name: Build Rust engine
+        script: '"$SRCROOT/scripts/build-rust.sh"'
+        basedOnDependencyAnalysis: false
+        outputFiles:
+          - $(SRCROOT)/build/rust/liboshelf_mac.a
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.offshelf.Offshelf
+        PRODUCT_NAME: Offshelf
+        INFOPLIST_FILE: Offshelf/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Offshelf/Offshelf.entitlements
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        LIBRARY_SEARCH_PATHS: $(SRCROOT)/build/rust
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/build/rust/include
+        HEADER_SEARCH_PATHS: $(SRCROOT)/build/rust/include
+        OTHER_LDFLAGS: -loshelf_mac
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        DEAD_CODE_STRIPPING: YES

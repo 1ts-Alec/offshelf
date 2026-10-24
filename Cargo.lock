@@ -1390,6 +1390,7 @@ dependencies = [
  "futures",
  "hex",
  "http-body-util",
+ "libc",
  "oshelf-core",
  "rand",
  "rusqlite",
