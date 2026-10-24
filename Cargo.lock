@@ -828,6 +828,7 @@ dependencies = [
  "hex",
  "hmac",
  "rand",
+ "serde_json",
  "sha2",
  "thiserror",
 ]

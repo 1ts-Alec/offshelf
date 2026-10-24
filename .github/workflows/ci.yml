@@ -17,6 +17,8 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test --all
+      - name: Fuzz targets compile
+        run: cargo check --manifest-path fuzz/Cargo.toml
 
   build:
     needs: test

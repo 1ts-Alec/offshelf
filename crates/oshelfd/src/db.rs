@@ -41,6 +41,14 @@ CREATE TABLE IF NOT EXISTS manifest_log (
     created_at  INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS snapshots (
+    revision    INTEGER PRIMARY KEY,
+    object_id   BLOB NOT NULL REFERENCES objects(id),
+    hash        BLOB NOT NULL,
+    blob        BLOB NOT NULL,
+    created_at  INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS devices (
     id          BLOB PRIMARY KEY,
     name        TEXT NOT NULL,
@@ -85,6 +93,30 @@ pub struct Device {
 fn hex_ser<S: serde::Serializer>(v: &Id16, s: S) -> Result<S::Ok, S::Error> {
     s.serialize_str(&hex::encode(v))
 }
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum SnapshotResult {
+    Stored {
+        hash: Id32,
+    },
+    /// Not newer than the latest snapshot, or past the head.
+    BadRevision {
+        latest_snapshot: u64,
+        head: u64,
+    },
+    MissingObject,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Snapshot {
+    pub revision: u64,
+    pub object_id: Id16,
+    pub hash: Id32,
+    pub blob: Vec<u8>,
+}
+
+/// Snapshots the Pi keeps; the log is kept from the oldest of them onward.
+pub const SNAPSHOTS_KEPT: usize = 2;
 
 #[derive(Debug, Default, serde::Serialize)]
 pub struct Usage {
@@ -340,6 +372,84 @@ impl Inner {
     }
 }
 
+/// Manifest snapshots and log pruning.
+impl Inner {
+    /// Stores a sealed snapshot header for `revision` whose segments live in
+    /// `object_id`. Keeps the newest [`SNAPSHOTS_KEPT`]; older snapshots lose
+    /// their object (so gc reclaims the segments) and the log before the
+    /// oldest kept snapshot is pruned.
+    pub fn put_snapshot(&mut self, revision: u64, object_id: &Id16, blob: &[u8]) -> rusqlite::Result<SnapshotResult> {
+        let tx = self
+            .conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let head: i64 = tx.query_row("SELECT COALESCE(MAX(revision), 0) FROM manifest_log", [], |r| r.get(0))?;
+        let latest: i64 = tx.query_row("SELECT COALESCE(MAX(revision), 0) FROM snapshots", [], |r| r.get(0))?;
+        if revision == 0 || revision as i64 <= latest || revision as i64 > head {
+            return Ok(SnapshotResult::BadRevision {
+                latest_snapshot: latest as u64,
+                head: head as u64,
+            });
+        }
+        let has_object = tx
+            .query_row("SELECT 1 FROM objects WHERE id = ?1", [&object_id[..]], |_| Ok(()))
+            .optional()?
+            .is_some();
+        if !has_object {
+            return Ok(SnapshotResult::MissingObject);
+        }
+        let hash = *blake3::hash(blob).as_bytes();
+        tx.execute(
+            "INSERT INTO snapshots (revision, object_id, hash, blob, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![revision as i64, &object_id[..], &hash[..], blob, now()],
+        )?;
+
+        let old: Vec<(i64, Vec<u8>)> = {
+            let mut q =
+                tx.prepare("SELECT revision, object_id FROM snapshots ORDER BY revision DESC LIMIT -1 OFFSET ?1")?;
+            let rows = q.query_map([SNAPSHOTS_KEPT as i64], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            rows.collect::<rusqlite::Result<_>>()?
+        };
+        for (rev, obj) in &old {
+            tx.execute("DELETE FROM snapshots WHERE revision = ?1", [rev])?;
+            tx.execute("DELETE FROM objects WHERE id = ?1", [obj])?;
+        }
+        if !old.is_empty() {
+            let oldest_kept: i64 = tx.query_row("SELECT MIN(revision) FROM snapshots", [], |r| r.get(0))?;
+            // The head entry always survives: head >= newest snapshot > oldest kept.
+            tx.execute("DELETE FROM manifest_log WHERE revision <= ?1", [oldest_kept])?;
+        }
+        tx.commit()?;
+        Ok(SnapshotResult::Stored { hash })
+    }
+
+    pub fn latest_snapshot(&mut self) -> rusqlite::Result<Option<Snapshot>> {
+        self.conn
+            .query_row(
+                "SELECT revision, object_id, hash, blob FROM snapshots ORDER BY revision DESC LIMIT 1",
+                [],
+                |r| {
+                    let obj: Vec<u8> = r.get(1)?;
+                    Ok(Snapshot {
+                        revision: r.get::<_, i64>(0)? as u64,
+                        object_id: obj.try_into().expect("object ids are 16 bytes"),
+                        hash: to32(r.get(2)?),
+                        blob: r.get(3)?,
+                    })
+                },
+            )
+            .optional()
+    }
+
+    /// Oldest revision still in the log, if any.
+    pub fn oldest_log_revision(&mut self) -> rusqlite::Result<Option<u64>> {
+        self.conn
+            .query_row("SELECT MIN(revision) FROM manifest_log", [], |r| {
+                r.get::<_, Option<i64>>(0)
+            })
+            .map(|o| o.map(|v| v as u64))
+    }
+}
+
 /// Devices and pairing codes.
 impl Inner {
     pub fn add_pairing_code(&mut self, code: &str, ttl_secs: i64, attempts: i64) -> rusqlite::Result<i64> {
@@ -498,5 +608,58 @@ mod tests {
 
         assert!(d.revoke_device(&[1; 16]).unwrap());
         assert_eq!(d.device_pubkey(&[1; 16]).unwrap(), None);
+    }
+
+    #[test]
+    fn snapshots_keep_two_and_prune_the_log() {
+        let mut d = db();
+        for i in 0..10u64 {
+            d.append_log(i, format!("OSL1{i}").as_bytes()).unwrap();
+        }
+        d.insert_chunk(&[1; 32], 10).unwrap();
+        for obj in [[1u8; 16], [2; 16], [3; 16]] {
+            d.insert_object(&obj, &[[1; 32]]).unwrap();
+        }
+        assert_eq!(
+            d.put_snapshot(3, &[9; 16], b"x").unwrap(),
+            SnapshotResult::MissingObject
+        );
+        assert!(matches!(
+            d.put_snapshot(11, &[1; 16], b"x").unwrap(),
+            SnapshotResult::BadRevision { head: 10, .. }
+        ));
+        assert!(matches!(
+            d.put_snapshot(3, &[1; 16], b"s3").unwrap(),
+            SnapshotResult::Stored { .. }
+        ));
+        assert!(matches!(
+            d.put_snapshot(3, &[2; 16], b"again").unwrap(),
+            SnapshotResult::BadRevision { latest_snapshot: 3, .. }
+        ));
+        d.put_snapshot(6, &[2; 16], b"s6").unwrap();
+        assert_eq!(
+            d.oldest_log_revision().unwrap(),
+            Some(1),
+            "nothing pruned with two snapshots"
+        );
+        d.put_snapshot(8, &[3; 16], b"s8").unwrap();
+
+        let latest = d.latest_snapshot().unwrap().unwrap();
+        assert_eq!(
+            (latest.revision, latest.object_id, latest.blob),
+            (8, [3; 16], b"s8".to_vec())
+        );
+        assert_eq!(
+            d.oldest_log_revision().unwrap(),
+            Some(7),
+            "log kept after the oldest kept snapshot (6)"
+        );
+        assert_eq!(d.head().unwrap().0, 10);
+        assert_eq!(
+            d.object_chunk_count(&[1; 16]).unwrap(),
+            None,
+            "dropped snapshot's object is gone"
+        );
+        assert!(d.object_chunk_count(&[2; 16]).unwrap().is_some());
     }
 }

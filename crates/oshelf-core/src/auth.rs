@@ -43,6 +43,31 @@ pub fn verify_request(
     .is_ok()
 }
 
+/// Bytes the server signs for a response: tied to the request's signature so
+/// an old response can't be replayed against a new request.
+pub fn response_message(request_sig: &[u8; 64], status: u16, body: &[u8]) -> Vec<u8> {
+    let mut m = Vec::with_capacity(4 + 64 + 2 + 32);
+    m.extend_from_slice(b"OSS1");
+    m.extend_from_slice(request_sig);
+    m.extend_from_slice(&status.to_le_bytes());
+    m.extend_from_slice(blake3::hash(body).as_bytes());
+    m
+}
+
+pub fn sign_response(key: &SigningKey, request_sig: &[u8; 64], status: u16, body: &[u8]) -> [u8; 64] {
+    key.sign(&response_message(request_sig, status, body)).to_bytes()
+}
+
+/// Devices check every buffered response against the server key they
+/// pinned at pairing.
+pub fn verify_response(key: &VerifyingKey, request_sig: &[u8; 64], status: u16, body: &[u8], sig: &[u8; 64]) -> bool {
+    key.verify(
+        &response_message(request_sig, status, body),
+        &Signature::from_bytes(sig),
+    )
+    .is_ok()
+}
+
 fn hmac(code: &str, parts: &[&[u8]]) -> [u8; 32] {
     let mut mac = Hmac::<Sha256>::new_from_slice(normalize_code(code).as_bytes()).expect("hmac takes any key length");
     for p in parts {
@@ -128,6 +153,17 @@ mod tests {
             b"bodY",
             &sig
         ));
+    }
+
+    #[test]
+    fn response_signatures_bind_request_status_and_body() {
+        let key = SigningKey::from_bytes(&[4; 32]);
+        let vk = key.verifying_key();
+        let sig = sign_response(&key, &[1; 64], 200, b"ok");
+        assert!(verify_response(&vk, &[1; 64], 200, b"ok", &sig));
+        assert!(!verify_response(&vk, &[2; 64], 200, b"ok", &sig));
+        assert!(!verify_response(&vk, &[1; 64], 201, b"ok", &sig));
+        assert!(!verify_response(&vk, &[1; 64], 200, b"no", &sig));
     }
 
     #[test]
