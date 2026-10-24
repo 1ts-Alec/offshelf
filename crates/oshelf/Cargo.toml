@@ -1,0 +1,26 @@
+[package]
+name = "oshelf"
+description = "Offshelf command line client: pair, set up, browse, upload and download"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+oshelf-core.workspace = true
+hex.workspace = true
+rand.workspace = true
+ed25519-dalek.workspace = true
+anyhow = "1"
+base64 = "0.22"
+clap = { version = "4", features = ["derive", "env"] }
+rpassword = "7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = "2"
+
+[dev-dependencies]
+oshelfd = { path = "../oshelfd" }
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "net"] }
+axum = "0.8"

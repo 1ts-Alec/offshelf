@@ -14,6 +14,7 @@ Status: early. This repo holds the crypto spec and the server core.
 | `spec/vectors/` | Test vectors every implementation must pass |
 | `fuzz/` | cargo-fuzz targets, run nightly |
 | `crates/oshelf-core` | Chunk sealing, chunk ids, byte range mapping (shared with the Mac and web apps) |
+| `crates/oshelf` | The `oshelf` command line client |
 | `assets/brand/` | App icon, menu bar glyph and favicon |
 | `crates/oshelfd` | The server: axum API, content addressed chunk store, SQLite metadata |
 
@@ -36,6 +37,27 @@ oshelfd --data-dir /mnt/shelf pair      # prints a code like 7KQ2-M9XD
 oshelfd --data-dir /mnt/shelf devices   # list paired devices
 oshelfd --data-dir /mnt/shelf revoke <device id>
 ```
+
+## Use the CLI
+
+```sh
+cargo build --release -p oshelf
+oshelf pair http://192.168.1.20:8740 7KQ2-M9XD --name "MacBook"
+oshelf init                      # set a passphrase, write down the 24 recovery words
+oshelf put ~/Pictures/Trips --to Photos
+oshelf ls Photos/Trips
+oshelf get Photos/Trips/rome.jpg ~/Desktop
+oshelf mv Photos/Trips Archive
+oshelf rm Archive/old.mov
+oshelf export /Volumes/Backup/shelf   # decrypted copy of everything
+oshelf status
+```
+
+Other commands: `cat`, `mkdir`, `usage`, `devices`, `pair-code` (to add
+another device), `revoke`, `passwd`, `compact`. Commands that read the shelf
+ask for the passphrase, or take it from `OSHELF_PASSPHRASE`; add `--recovery`
+to unlock with the recovery words. Device state lives in `~/.config/oshelf`
+(or `OSHELF_HOME`).
 
 ## API v1
 
