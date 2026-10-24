@@ -15,6 +15,7 @@ Status: early. This repo holds the crypto spec and the server core.
 | `fuzz/` | cargo-fuzz targets, run nightly |
 | `crates/oshelf-core` | Chunk sealing, chunk ids, byte range mapping (shared with the Mac and web apps) |
 | `crates/oshelf` | The `oshelf` command line client |
+| `crates/oshelf-mac` | The Mac app's engine: loopback NFS mount, range reads, chunk cache, pins, offload, uploads, host switching |
 | `assets/brand/` | App icon, menu bar glyph and favicon |
 | `crates/oshelfd` | The server: axum API, content addressed chunk store, SQLite metadata |
 
@@ -58,6 +59,22 @@ another device), `revoke`, `passwd`, `compact`. Commands that read the shelf
 ask for the passphrase, or take it from `OSHELF_PASSPHRASE`; add `--recovery`
 to unlock with the recovery words. Device state lives in `~/.config/oshelf`
 (or `OSHELF_HOME`).
+
+## Mount it on a Mac (development)
+
+The Mac app embeds `crates/oshelf-mac`. Until the app ships, the same engine
+runs from the command line, using the device the CLI paired:
+
+```sh
+cargo build --release -p oshelf-mac
+./target/release/oshelf-mount --at ~/OffshelfMount
+```
+
+It serves the shelf on a loopback NFS port and mounts it with the system's
+`mount_nfs` (no admin rights, no kernel extension). Reads fetch only the 1 MiB
+chunks they touch, plus a readahead that grows with sequential reading.
+Writes land in a local staging file and upload in the background once quiet;
+`.DS_Store` and `._*` files stay on the Mac.
 
 ## API v1
 

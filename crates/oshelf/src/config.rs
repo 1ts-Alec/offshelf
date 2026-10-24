@@ -22,6 +22,7 @@ pub struct Seen {
     pub hash: String,
 }
 
+#[derive(Debug, Clone)]
 pub struct Home {
     dir: PathBuf,
 }
