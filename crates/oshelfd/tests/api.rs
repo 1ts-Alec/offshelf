@@ -613,3 +613,31 @@ async fn admin_hosts_devices_codes_gc() {
     assert_eq!(usage["unreferenced_bytes"], 0);
     assert!(usage["version"].is_string());
 }
+
+#[tokio::test]
+async fn control_socket_hands_out_pairing_codes() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = oshelfd::AppState::open(dir.path()).unwrap();
+    let sock = dir.path().join("oshelfd.sock");
+    assert!(
+        oshelfd::control::ask(&sock, "pair").await.unwrap().is_none(),
+        "no server yet"
+    );
+
+    tokio::spawn(oshelfd::control::serve(state.clone(), sock.clone()));
+    let mut code = None;
+    for _ in 0..50 {
+        if let Some(c) = oshelfd::control::ask(&sock, "pair").await.unwrap() {
+            code = Some(c);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    let code = code.expect("server answered");
+    assert_eq!(code.trim().len(), 9, "XXXX-XXXX: {code:?}");
+    assert!(oshelfd::control::ask(&sock, "nope").await.is_err());
+    assert_eq!(
+        oshelfd::control::ask(&sock, "devices").await.unwrap(),
+        Some(String::new())
+    );
+}
