@@ -17,6 +17,8 @@ use crate::config::{Config, Home};
 
 /// Chunks fetched per ranged read (the server allows 64).
 const READ_BATCH: u64 = 16;
+/// Rounds of "the head moved while reading the log" before giving up.
+const CATCH_UP_ROUNDS: usize = 8;
 /// Times a commit is rebuilt on a newer head before giving up.
 const COMMIT_RETRIES: usize = 8;
 
@@ -215,8 +217,29 @@ impl Shelf {
     }
 
     /// Applies every log entry after the current chain position, verifying
-    /// each link, then checks the Pi's reported head matches.
+    /// each link, then checks the Pi's reported head matches. Another device
+    /// can commit between reading the log and asking for the head; a head
+    /// that moved ahead means "read again", not tampering.
     pub fn catch_up(&mut self) -> anyhow::Result<()> {
+        for attempt in 0.. {
+            self.apply_new_entries()?;
+            let head = self.client.get("/v1/manifest/head")?.ok()?.json()?;
+            let head_rev = head["revision"].as_u64().context("bad head")?;
+            if head_rev > self.chain.revision && attempt < CATCH_UP_ROUNDS {
+                continue;
+            }
+            ensure!(
+                head_rev == self.chain.revision && head["hash"] == hex::encode(self.chain.hash),
+                "the Pi's head ({head_rev}) doesn't match the verified log ({})",
+                self.chain.revision
+            );
+            break;
+        }
+        self.home
+            .advance_seen(self.chain.revision, &hex::encode(self.chain.hash))
+    }
+
+    fn apply_new_entries(&mut self) -> anyhow::Result<()> {
         loop {
             let r = self
                 .client
@@ -230,7 +253,7 @@ impl Shelf {
             }
             let entries = client::log_frames(&r.ok()?.body)?;
             if entries.is_empty() {
-                break;
+                return Ok(());
             }
             for (rev, sealed) in entries {
                 ensure!(
@@ -242,15 +265,6 @@ impl Shelf {
                 self.chain = next;
             }
         }
-        let head = self.client.get("/v1/manifest/head")?.ok()?.json()?;
-        let head_rev = head["revision"].as_u64().context("bad head")?;
-        ensure!(
-            head_rev == self.chain.revision && head["hash"] == hex::encode(self.chain.hash),
-            "the Pi's head ({head_rev}) doesn't match the verified log ({})",
-            self.chain.revision
-        );
-        self.home
-            .advance_seen(self.chain.revision, &hex::encode(self.chain.hash))
     }
 
     /// Commits ops built by `build` against the newest head. `build` runs

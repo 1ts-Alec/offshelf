@@ -31,6 +31,9 @@ export interface Crumb {
 /** The Pi offered an older or different history than this browser verified. */
 export class TamperError extends Error {}
 
+/** Rounds of "the head moved while we read the log" before giving up. */
+const MAX_CATCH_UP = 8;
+
 const READ_BATCH = 16;
 const COMMIT_RETRIES = 8;
 const PARALLEL_UPLOADS = 4;
@@ -117,34 +120,52 @@ export class Session {
 
   /** Applies every entry after our position, then checks the Pi's head. */
   private async catchUpLocked() {
-    for (;;) {
-      const r = await this.api.call("GET", `/v1/manifest/log?since=${this.shelf.revision()}`, { allow: [410] });
-      if (r.status === 410) {
-        // Compacted past us: start over from the latest snapshot.
-        this.shelf.reset();
-        await this.loadSnapshot();
-        continue;
+    // Another device (or another tab) can commit between reading the log and
+    // asking for the head, so a head that is ahead just means "fetch again".
+    // Only a head behind what we verified, or a different hash for the same
+    // revision, is the Pi misbehaving.
+    for (let attempt = 0; ; attempt++) {
+      for (;;) {
+        const r = await this.api.call("GET", `/v1/manifest/log?since=${this.shelf.revision()}`, { allow: [410] });
+        if (r.status === 410) {
+          // Compacted past us: start over from the latest snapshot.
+          this.shelf.reset();
+          await this.loadSnapshot();
+          continue;
+        }
+        if (this.shelf.apply_log(r.body) === 0) break;
+        this.changed();
       }
-      if (this.shelf.apply_log(r.body) === 0) break;
-      this.changed();
+      const head = json<{ revision: number; hash: string }>(await this.api.call("GET", "/v1/manifest/head"));
+      if (head.revision > this.shelf.revision()) {
+        if (attempt < MAX_CATCH_UP) continue;
+        throw new Error("Your shelf is changing quickly; still catching up.");
+      }
+      // Another tab may have verified a newer revision after we read the
+      // head; ask again before calling it a rollback (advanceSeen decides).
+      const seen = await store.loadSeen();
+      if (seen && seen.revision > this.shelf.revision() && attempt < MAX_CATCH_UP) continue;
+      if (!this.shelf.matches_head(head.revision, head.hash)) {
+        throw new TamperError("Your Pi's history doesn't match what it sent. Stopped to be safe.");
+      }
+      await this.advanceSeen();
+      this.lastVerified = Date.now();
+      return;
     }
-    const head = json<{ revision: number; hash: string }>(await this.api.call("GET", "/v1/manifest/head"));
-    if (!this.shelf.matches_head(head.revision, head.hash)) {
-      throw new TamperError("Your Pi's history doesn't match what it sent. Stopped to be safe.");
-    }
-    await this.advanceSeen();
-    this.lastVerified = Date.now();
   }
 
   catchUp(): Promise<void> {
     return this.exclusive(() => this.catchUpLocked());
   }
 
-  private async advanceSeen() {
+  private async advanceSeen(strict = true) {
     const revision = this.shelf.revision();
     const hash = this.shelf.head_hash();
     const seen = await store.loadSeen();
+    if (!strict && seen && revision <= seen.revision) return;
     if (seen && revision < seen.revision) {
+      // The Pi's head matched us but is behind what this browser verified
+      // before (catchUpLocked already re-asked): a real rollback.
       throw new TamperError(
         `Your Pi went back in time (revision ${revision}, this browser saw ${seen.revision}). Stopped to be safe.`,
       );
@@ -300,7 +321,10 @@ export class Session {
         }
         const head = json<{ revision: number; hash: string }>(r);
         const drops: string[] = this.shelf.confirm(head.revision, head.hash);
-        await this.advanceSeen();
+        // The Pi just accepted our entry on top of our verified chain. Another
+        // tab may already have recorded a later revision; that's not a
+        // rollback, so only move the record forward here.
+        await this.advanceSeen(false);
         this.changed();
         // Best effort: an object left behind only costs space.
         for (const o of drops) this.api.call("DELETE", `/v1/objects/${o}`).catch(() => undefined);
