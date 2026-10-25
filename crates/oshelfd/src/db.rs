@@ -387,6 +387,11 @@ impl Inner {
         Ok(self.conn.execute("DELETE FROM pairing_codes WHERE code = ?1", [code])? > 0)
     }
 
+    /// Folds the write-ahead log into the main file (before copying it).
+    pub fn checkpoint(&mut self) -> rusqlite::Result<()> {
+        self.conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))
+    }
+
     pub fn usage(&mut self) -> rusqlite::Result<Usage> {
         let (chunks, stored_bytes): (i64, i64) =
             self.conn

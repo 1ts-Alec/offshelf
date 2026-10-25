@@ -62,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    let mut state = AppState::open(&cli.data_dir).map_err(|e| {
+    let mut state = AppState::open_home(&cli.data_dir).map_err(|e| {
         if ask.is_some() {
             e.context(format!(
                 "no oshelfd running (nothing at {}), and the data folder isn't readable as this user",
@@ -88,7 +88,7 @@ async fn main() -> anyhow::Result<()> {
                 }
             });
             let listener = tokio::net::TcpListener::bind(bind).await?;
-            tracing::info!(%bind, data_dir = %cli.data_dir.display(), "oshelfd listening");
+            tracing::info!(%bind, shelf = %state.data_dir.display(), "oshelfd listening");
             axum::serve(listener, oshelfd::router(state))
                 .with_graceful_shutdown(async {
                     let _ = tokio::signal::ctrl_c().await;

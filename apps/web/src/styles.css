@@ -1103,3 +1103,100 @@ table.devices {
   display: flex;
   gap: 6px;
 }
+
+/* ---- first-run setup ---------------------------------------------------- */
+.card.setup {
+  width: min(480px, 100%);
+}
+.drives {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.drive {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  background: var(--surface);
+}
+.drive.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--mist);
+}
+.drive.off {
+  cursor: default;
+  opacity: 0.6;
+}
+.drive input {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+.drive-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+.drive-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.drive-name {
+  font-weight: 600;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.drive-meta {
+  font-size: 12px;
+  color: var(--secondary);
+}
+.drive .pill {
+  background: var(--mist);
+  color: var(--mist-ink);
+  padding: 2px 8px;
+}
+.drive .pill.quiet {
+  background: var(--ground);
+  color: var(--secondary);
+}
+.drive-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--track);
+  overflow: hidden;
+}
+.drive-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.words {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 6px 12px;
+  margin: 0;
+  padding: 14px 18px 14px 36px;
+  background: var(--warn-fill);
+  color: var(--warn-ink);
+  border-radius: 12px;
+  font-size: 14px;
+}
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .words,
+  .words * {
+    visibility: visible;
+  }
+  .words {
+    position: absolute;
+    inset: 0 auto auto 0;
+  }
+}

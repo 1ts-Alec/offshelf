@@ -81,9 +81,11 @@ pub fn router(state: AppState) -> Router {
             get(get_hosts).put(put_hosts).layer(DefaultBodyLimit::max(MAX_SETTING)),
         )
         .route("/v1/gc", axum::routing::post(run_gc))
+        .route("/v1/storage", get(get_storage).post(post_storage))
         .route("/v1/devices", get(auth::list_devices))
         .route("/v1/devices/{id}", axum::routing::delete(auth::revoke_device))
         .fallback(fallback)
+        .layer(axum::middleware::from_fn_with_state(state.clone(), refuse_while_moving))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             auth::require_signature,
@@ -488,4 +490,101 @@ async fn events(
             .expect("revision event serializes"))
     });
     Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
+}
+
+// ---- storage ---------------------------------------------------------------
+
+#[derive(Serialize)]
+struct StorageInfo {
+    /// First-run setup has picked where the shelf lives.
+    configured: bool,
+    current: String,
+    drives: Vec<crate::storage::Drive>,
+    /// The drive setup suggests: the usable one with the most free space.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recommended: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    moving: Option<crate::storage::Moving>,
+}
+
+async fn get_storage(State(s): State<AppState>) -> ApiResult<Json<StorageInfo>> {
+    let st = s.clone();
+    let drives = tokio::task::spawn_blocking(move || crate::storage::list(&st))
+        .await
+        .map_err(|e| ApiError::bad(e.to_string()))?;
+    Ok(Json(StorageInfo {
+        configured: crate::storage::configured(&s.home),
+        current: s.data_dir.display().to_string(),
+        recommended: crate::storage::recommend(&drives),
+        drives,
+        moving: s.moving.lock().expect("move lock").clone(),
+    }))
+}
+
+#[derive(Deserialize)]
+struct StorageChoice {
+    drive: String,
+}
+
+/// Puts the shelf on a drive. The copy runs in the background; when it
+/// finishes the server exits and systemd starts it again on the new drive.
+async fn post_storage(State(s): State<AppState>, Json(c): Json<StorageChoice>) -> ApiResult<StatusCode> {
+    if s.moving
+        .lock()
+        .expect("move lock")
+        .as_ref()
+        .is_some_and(|m| m.error.is_none())
+    {
+        return Err(ApiError::bad("the shelf is already moving"));
+    }
+    let state = s.clone();
+    // Validate before answering, so a bad choice is an error, not a restart.
+    let usable = crate::storage::list(&s)
+        .into_iter()
+        .any(|d| d.path == c.drive && d.unusable.is_none());
+    if !usable {
+        return Err(ApiError::bad(format!("{} can't hold the shelf", c.drive)));
+    }
+    tokio::spawn(async move {
+        match crate::storage::move_to(&state, &c.drive).await {
+            Ok(to) => {
+                tracing::info!(shelf = %to.display(), "shelf location set; restarting on it");
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                std::process::exit(crate::storage::RESTART_CODE);
+            }
+            Err(e) => {
+                tracing::warn!("moving the shelf failed: {e:#}");
+                let mut m = state.moving.lock().expect("move lock");
+                match m.as_mut() {
+                    Some(m) => m.error = Some(format!("{e:#}")),
+                    None => {
+                        *m = Some(crate::storage::Moving {
+                            to: c.drive.clone(),
+                            error: Some(format!("{e:#}")),
+                            ..Default::default()
+                        })
+                    }
+                }
+            }
+        }
+    });
+    Ok(StatusCode::ACCEPTED)
+}
+
+/// While the shelf is being copied, changes would be lost: refuse them.
+async fn refuse_while_moving(
+    State(s): State<AppState>,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let busy = s
+        .moving
+        .lock()
+        .expect("move lock")
+        .as_ref()
+        .is_some_and(|m| m.error.is_none());
+    if busy && req.method() != axum::http::Method::GET && req.uri().path() != "/v1/storage" {
+        return (StatusCode::SERVICE_UNAVAILABLE, "the shelf is moving to another drive").into_response();
+    }
+    next.run(req).await
 }
