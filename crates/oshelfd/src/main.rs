@@ -46,7 +46,32 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .init();
     let cli = Cli::parse();
-    let mut state = AppState::open(&cli.data_dir)?;
+    let socket = oshelfd::control::socket_path(&cli.data_dir);
+
+    // Pairing codes and the device list come from the running server when
+    // there is one, so these work for any user, without sudo.
+    let ask = match cli.command {
+        Command::Pair => Some("pair"),
+        Command::Devices => Some("devices"),
+        _ => None,
+    };
+    if let Some(cmd) = ask {
+        if let Some(reply) = oshelfd::control::ask(&socket, cmd).await? {
+            print!("{reply}");
+            return Ok(());
+        }
+    }
+
+    let mut state = AppState::open(&cli.data_dir).map_err(|e| {
+        if ask.is_some() {
+            e.context(format!(
+                "no oshelfd running (nothing at {}), and the data folder isn't readable as this user",
+                socket.display()
+            ))
+        } else {
+            e
+        }
+    })?;
 
     match cli.command {
         Command::Serve { bind, web_dir } => {
@@ -55,6 +80,13 @@ async fn main() -> anyhow::Result<()> {
                 anyhow::ensure!(dir.join("index.html").exists(), "{} has no index.html", dir.display());
                 state.web = Some(std::sync::Arc::new(oshelfd::web::WebApp::Dir(dir)));
             }
+            let control = state.clone();
+            let socket_path = socket.clone();
+            tokio::spawn(async move {
+                if let Err(e) = oshelfd::control::serve(control, socket_path.clone()).await {
+                    tracing::warn!(socket = %socket_path.display(), "control socket unavailable: {e}");
+                }
+            });
             let listener = tokio::net::TcpListener::bind(bind).await?;
             tracing::info!(%bind, data_dir = %cli.data_dir.display(), "oshelfd listening");
             axum::serve(listener, oshelfd::router(state))
@@ -63,22 +95,8 @@ async fn main() -> anyhow::Result<()> {
                 })
                 .await?;
         }
-        Command::Pair => {
-            let code = oshelfd::auth::new_pairing_code();
-            let c = code.clone();
-            state
-                .db
-                .call(move |db| {
-                    db.add_pairing_code(&c, oshelfd::auth::PAIRING_TTL_SECS, oshelfd::auth::PAIRING_ATTEMPTS)
-                })
-                .await?;
-            println!("{}", oshelfd::auth::display_code(&code));
-        }
-        Command::Devices => {
-            for d in state.db.call(|db| db.devices()).await? {
-                println!("{}  {}", hex::encode(d.id), d.name);
-            }
-        }
+        Command::Pair => print!("{}", oshelfd::control::run(&state, "pair").await?),
+        Command::Devices => print!("{}", oshelfd::control::run(&state, "devices").await?),
         Command::Revoke { device_id } => {
             let mut id = [0u8; 16];
             hex::decode_to_slice(&device_id, &mut id)?;

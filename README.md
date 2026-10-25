@@ -29,6 +29,11 @@ cargo build --release
 ./target/release/oshelfd --data-dir /mnt/shelf serve --bind 192.168.1.20:8740
 ```
 
+As a service, install `crates/oshelfd/dist/oshelfd.service` (it runs as an
+`offshelf` user with data in `/var/lib/offshelf`). The running server listens
+on `/run/offshelf/oshelfd.sock`, so `oshelfd pair` and `oshelfd devices` work
+for any user on the Pi without sudo.
+
 oshelfd refuses to bind a public address. For access away from home, put
 your own tunnel (for example Cloudflare Tunnel) in front of it.
 
