@@ -6,6 +6,7 @@ import { Session, TamperError } from "./lib/session";
 import * as store from "./lib/store";
 import { Loading, NewPassphrase, Pair, Problem, Unlock } from "./views/Gate";
 import { Shell } from "./views/Shell";
+import { ChooseDrive, CreateShelf, loadStorage, type StorageInfo } from "./views/Setup";
 
 const STAY_MS = 7 * 86_400_000;
 /** The master key for this tab only, sealed under the local wrap key. */
@@ -14,6 +15,7 @@ const TAB_KEY = "offshelf-mk";
 type State =
   | { at: "boot" }
   | { at: "pair" }
+  | { at: "drive"; info: StorageInfo }
   | { at: "novault" }
   | { at: "unlock" }
   | { at: "loading"; loaded: number; total: number }
@@ -49,6 +51,9 @@ export function App() {
       setDevice(d);
       const a = await apiFor(d);
       setApi(a);
+      // First run: pick the drive before anything is stored.
+      const info = await loadStorage(a);
+      if (!info.configured) return setState({ at: "drive", info });
       const r = await a.call("GET", "/v1/vault", { allow: [404] });
       if (r.status === 404) return setState({ at: "novault" });
       const v = { bytes: r.body, etag: (r.headers.get("etag") ?? "").replaceAll('"', "") };
@@ -139,8 +144,19 @@ export function App() {
       return null;
     case "pair":
       return <Pair onPair={onPair} />;
+    case "drive":
+      return <ChooseDrive api={api!} info={state.info} onDone={boot} />;
     case "novault":
-      return <Problem title="No shelf yet" text="Set one up from the Mac app or with oshelf init, then reload." />;
+      return (
+        <CreateShelf
+          api={api!}
+          onDone={async (v) => {
+            const r = await api!.call("GET", "/v1/vault");
+            setVault({ bytes: r.body, etag: (r.headers.get("etag") ?? "").replaceAll('"', "") });
+            await open(api!, device!, r.body, v.mk);
+          }}
+        />
+      );
     case "unlock":
       return <Unlock deviceName={device?.name ?? ""} onUnlock={onUnlock} onForget={unpair} />;
     case "newpass":

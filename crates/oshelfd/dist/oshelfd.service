@@ -4,15 +4,33 @@ After=network-online.target local-fs.target
 Wants=network-online.target
 
 [Service]
-User=offshelf
-Group=offshelf
 Environment=OSHELF_DATA_DIR=/var/lib/offshelf
 ExecStart=/usr/local/bin/oshelfd serve
+# Exits with 75 after first-run setup moves the shelf to a drive, so it
+# comes back up there.
+Restart=always
+RestartSec=1
+
+# Runs as root so setup can put the shelf on any mounted drive, but may only
+# write to its own folder and to drives under /mnt, /media, /run/media and
+# /srv, and holds no other privileges.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/offshelf -/mnt -/media -/run/media -/srv
+StateDirectory=offshelf
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_CHOWN CAP_FOWNER
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
 # /run/offshelf holds the control socket, so `oshelfd pair` works for any
 # user without sudo.
 RuntimeDirectory=offshelf
 RuntimeDirectoryMode=0755
-Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target

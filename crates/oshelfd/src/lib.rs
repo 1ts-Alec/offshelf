@@ -7,6 +7,7 @@ pub mod config;
 pub mod control;
 pub mod db;
 pub mod error;
+pub mod storage;
 pub mod store;
 pub mod web;
 
@@ -36,6 +37,12 @@ pub struct AppState {
     pub web: Option<Arc<web::WebApp>>,
     pub presence: Arc<Presence>,
     pub started_at: std::time::Instant,
+    /// The server's own folder (`--data-dir`), holding `location`.
+    pub home: std::path::PathBuf,
+    /// Where the shelf lives now: `home`, or a folder on a chosen drive.
+    pub data_dir: std::path::PathBuf,
+    /// Set while the shelf is being copied to another drive.
+    pub moving: storage::MoveState,
 }
 
 /// When each device last made a request, and which hold the event stream
@@ -99,6 +106,14 @@ impl Drop for StreamGuard {
 }
 
 impl AppState {
+    /// Opens the shelf wherever `home` says it lives (see `storage`).
+    pub fn open_home(home: &Path) -> anyhow::Result<Self> {
+        let data_dir = storage::resolve(home);
+        let mut s = Self::open(&data_dir)?;
+        s.home = home.to_path_buf();
+        Ok(s)
+    }
+
     /// Opens (or creates) the database and chunk store under `data_dir`.
     pub fn open(data_dir: &Path) -> anyhow::Result<Self> {
         std::fs::create_dir_all(data_dir)?;
@@ -115,6 +130,9 @@ impl AppState {
             web: web::WebApp::default_app().map(Arc::new),
             presence: Arc::default(),
             started_at: std::time::Instant::now(),
+            home: data_dir.to_path_buf(),
+            data_dir: data_dir.to_path_buf(),
+            moving: Arc::default(),
         })
     }
 }

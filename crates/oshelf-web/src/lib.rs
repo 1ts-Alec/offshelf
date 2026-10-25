@@ -181,6 +181,19 @@ pub fn unlock_recovery(vault: &[u8], words: &str) -> Result<Vec<u8>> {
     Ok(decode_vault(vault)?.unlock_with_recovery(words).map_err(err)?.to_vec())
 }
 
+/// Creates a new shelf's vault (Argon2id: run it in a worker). Returns
+/// `u32le header_len || header || master key (32) || recovery words`.
+#[wasm_bindgen]
+pub fn create_vault(passphrase: &str) -> Result<Vec<u8>> {
+    let v = VaultHeader::create(passphrase, oshelf_core::vault::Kdf::new_default()).map_err(err)?;
+    let header = v.header.encode();
+    let mut out = (header.len() as u32).to_le_bytes().to_vec();
+    out.extend_from_slice(&header);
+    out.extend_from_slice(&v.master_key);
+    out.extend_from_slice(v.recovery_words.as_bytes());
+    Ok(out)
+}
+
 /// The vault header re-wrapped under a new passphrase.
 #[wasm_bindgen]
 pub fn change_passphrase(vault: &[u8], master_key: &[u8], new_passphrase: &str) -> Result<Vec<u8>> {
