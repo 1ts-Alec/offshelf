@@ -109,6 +109,14 @@ impl AppState {
     /// Opens the shelf wherever `home` says it lives (see `storage`).
     pub fn open_home(home: &Path) -> anyhow::Result<Self> {
         let data_dir = storage::resolve(home);
+        // A shelf moved to a drive that isn't mounted (or went missing)
+        // must not quietly start over, empty, on the main disk.
+        if data_dir != home && !data_dir.join("oshelf.db").exists() {
+            anyhow::bail!(
+                "the shelf should be at {}, but it isn't there; is its drive plugged in and mounted?",
+                data_dir.display()
+            );
+        }
         let mut s = Self::open(&data_dir)?;
         s.home = home.to_path_buf();
         Ok(s)

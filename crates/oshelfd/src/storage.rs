@@ -363,6 +363,20 @@ tmpfs /run tmpfs rw 0 0
     }
 
     #[test]
+    fn refuses_a_shelf_whose_drive_is_missing() {
+        let home = tempfile::tempdir().unwrap();
+        let drive = tempfile::tempdir().unwrap();
+        let shelf = drive.path().join(SHELF_FOLDER);
+        write_location(home.path(), &shelf).unwrap();
+        let err = AppState::open_home(home.path()).err().expect("no shelf on the drive");
+        assert!(err.to_string().contains("plugged in"), "{err}");
+        assert!(!shelf.exists(), "nothing made in its place");
+
+        AppState::open(&shelf).unwrap();
+        AppState::open_home(home.path()).unwrap();
+    }
+
+    #[test]
     fn location_round_trip() {
         let t = tempfile::tempdir().unwrap();
         assert!(!configured(t.path()));
