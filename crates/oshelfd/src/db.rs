@@ -388,8 +388,15 @@ impl Inner {
     }
 
     /// Folds the write-ahead log into the main file (before copying it).
-    pub fn checkpoint(&mut self) -> rusqlite::Result<()> {
-        self.conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))
+    /// Writes a consistent copy of the database to `path`, which must not
+    /// exist yet. Safe while the server keeps running, unlike copying the
+    /// file (and its -wal and -shm) byte by byte.
+    pub fn snapshot_to(&mut self, path: &Path) -> rusqlite::Result<()> {
+        let path = path
+            .to_str()
+            .ok_or_else(|| rusqlite::Error::InvalidPath(path.to_path_buf()))?;
+        self.conn.execute("VACUUM INTO ?1", [path])?;
+        Ok(())
     }
 
     pub fn usage(&mut self) -> rusqlite::Result<Usage> {

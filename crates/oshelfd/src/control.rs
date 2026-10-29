@@ -63,20 +63,35 @@ async fn handle(state: AppState, stream: UnixStream) -> anyhow::Result<()> {
 /// Runs one command against the open state. Shared by the socket and the
 /// direct (root) path, so both print the same thing.
 pub async fn run(state: &AppState, command: &str) -> anyhow::Result<String> {
+    use anyhow::Context;
+    let db_path = state.data_dir.join("oshelf.db");
     match command {
         "pair" => {
+            // Writes during a move would be lost, or worse, land mid-copy.
+            let moving = state
+                .moving
+                .lock()
+                .expect("move lock")
+                .as_ref()
+                .is_some_and(|m| m.error.is_none());
+            anyhow::ensure!(
+                !moving,
+                "the shelf is moving to another drive; try again when it's done"
+            );
             let code = crate::auth::new_pairing_code();
             let c = code.clone();
             state
                 .db
                 .call(move |db| db.add_pairing_code(&c, crate::auth::PAIRING_TTL_SECS, crate::auth::PAIRING_ATTEMPTS))
-                .await?;
+                .await
+                .with_context(|| format!("saving the code in {}", db_path.display()))?;
             Ok(format!("{}\n", crate::auth::display_code(&code)))
         }
         "devices" => Ok(state
             .db
             .call(|db| db.devices())
-            .await?
+            .await
+            .with_context(|| format!("reading {}", db_path.display()))?
             .into_iter()
             .map(|d| format!("{}  {}\n", hex::encode(d.id), d.name))
             .collect()),

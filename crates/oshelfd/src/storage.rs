@@ -12,6 +12,8 @@ use crate::AppState;
 
 /// File in the home folder naming the folder the shelf lives in.
 const LOCATION_FILE: &str = "location";
+/// The database, written separately as a snapshot (see [`move_to`]).
+const DB_FILE: &str = "oshelf.db";
 /// Folder made on a chosen drive.
 pub const SHELF_FOLDER: &str = "offshelf";
 /// Where removable and data drives are mounted; the systemd unit lets the
@@ -175,14 +177,16 @@ fn dir_size(p: &Path) -> u64 {
         .sum()
 }
 
-/// Copies `from` into `to`, skipping the home's own bookkeeping. Reports
-/// bytes copied as it goes.
+/// Copies `from` into `to`, skipping the home's own bookkeeping and the
+/// live database files. Reports bytes copied as it goes.
 fn copy_tree(from: &Path, to: &Path, progress: &dyn Fn(u64)) -> std::io::Result<()> {
     std::fs::create_dir_all(to)?;
     for e in std::fs::read_dir(from)? {
         let e = e?;
         let name = e.file_name();
-        if name == LOCATION_FILE || name == "oshelfd.sock" {
+        let skip =
+            name == LOCATION_FILE || name == "oshelfd.sock" || name.to_str().is_some_and(|n| n.starts_with(DB_FILE));
+        if skip {
             continue;
         }
         let (src, dst) = (e.path(), to.join(&name));
@@ -229,8 +233,6 @@ pub async fn move_to(state: &AppState, drive: &str) -> anyhow::Result<PathBuf> {
         total: need,
         error: None,
     });
-    // Fold the write-ahead log into the database so the copy is complete.
-    state.db.call(|db| db.checkpoint()).await?;
     let from = state.data_dir.clone();
     let to = target.clone();
     let moving = state.moving.clone();
@@ -241,7 +243,14 @@ pub async fn move_to(state: &AppState, drive: &str) -> anyhow::Result<PathBuf> {
             }
         })
     })
-    .await?;
+    .await?
+    .map_err(anyhow::Error::from);
+    // The database last, as one consistent snapshot: copying the live file
+    // and its write-ahead log can tear if anything writes meanwhile.
+    let r = match r {
+        Ok(()) => snapshot_db(state, &target).await,
+        e => e,
+    };
     if let Err(e) = r {
         let _ = std::fs::remove_dir_all(&target);
         if let Some(m) = state.moving.lock().expect("move lock").as_mut() {
@@ -251,6 +260,25 @@ pub async fn move_to(state: &AppState, drive: &str) -> anyhow::Result<PathBuf> {
     }
     write_location(&state.home, &target)?;
     Ok(target)
+}
+
+async fn snapshot_db(state: &AppState, target: &Path) -> anyhow::Result<()> {
+    let dst = target.join(DB_FILE);
+    let d = dst.clone();
+    state.db.call(move |db| db.snapshot_to(&d)).await?;
+    std::fs::File::open(&dst)?.sync_all()?;
+    let n = std::fs::metadata(&dst)?.len();
+    if let Some(m) = state.moving.lock().expect("move lock").as_mut() {
+        m.copied += n;
+    }
+    // Check the copy before switching to it.
+    let check = rusqlite::Connection::open_with_flags(&dst, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?.query_row(
+        "PRAGMA quick_check",
+        [],
+        |r| r.get::<_, String>(0),
+    )?;
+    anyhow::ensure!(check == "ok", "the copied database failed its check: {check}");
+    Ok(())
 }
 
 fn write_location(home: &Path, target: &Path) -> std::io::Result<()> {
@@ -294,6 +322,8 @@ tmpfs /run tmpfs rw 0 0
         let from = tempfile::tempdir().unwrap();
         let to = tempfile::tempdir().unwrap();
         std::fs::write(from.path().join("oshelf.db"), b"db").unwrap();
+        std::fs::write(from.path().join("oshelf.db-wal"), b"wal").unwrap();
+        std::fs::write(from.path().join("server.key"), b"k").unwrap();
         std::fs::write(from.path().join("location"), b"/x").unwrap();
         std::fs::create_dir_all(from.path().join("chunks/ab")).unwrap();
         std::fs::write(from.path().join("chunks/ab/c1"), vec![7u8; 1000]).unwrap();
@@ -304,9 +334,32 @@ tmpfs /run tmpfs rw 0 0
         })
         .unwrap();
         assert_eq!(std::fs::read(dst.join("chunks/ab/c1")).unwrap().len(), 1000);
-        assert_eq!(std::fs::read(dst.join("oshelf.db")).unwrap(), b"db");
+        assert_eq!(std::fs::read(dst.join("server.key")).unwrap(), b"k");
         assert!(!dst.join("location").exists());
-        assert_eq!(copied.into_inner(), 1002);
+        assert!(
+            !dst.join("oshelf.db").exists(),
+            "the database is snapshotted, not copied"
+        );
+        assert!(!dst.join("oshelf.db-wal").exists());
+        assert_eq!(copied.into_inner(), 1001);
+    }
+
+    #[tokio::test]
+    async fn snapshots_the_live_database() {
+        let from = tempfile::tempdir().unwrap();
+        let to = tempfile::tempdir().unwrap();
+        let state = AppState::open(from.path()).unwrap();
+        state
+            .db
+            .call(|db| db.add_pairing_code("AAAABBBB", 600, 3))
+            .await
+            .unwrap();
+        // The live database has its write-ahead log open now; the snapshot
+        // still holds everything.
+        assert!(from.path().join("oshelf.db-wal").exists());
+        snapshot_db(&state, to.path()).await.unwrap();
+        let copy = crate::db::Db::open(&to.path().join(DB_FILE)).unwrap();
+        assert_eq!(copy.call(|db| db.live_pairing_codes()).await.unwrap(), ["AAAABBBB"]);
     }
 
     #[test]
